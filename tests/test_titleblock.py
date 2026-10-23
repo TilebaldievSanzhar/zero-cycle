@@ -104,7 +104,7 @@ def test_form_and_graphs(parsed, i):
     assert paper_format(page.width, page.height) == paper
     assert tb is not None
     assert tb.form == values.form
-    assert tb.method == ("frame" if lines else "labels")
+    assert tb.method == ("grid" if lines else "labels")
     for g, s in values.graphs.items():
         assert tb.get(g) == s, f"графа {g}"
 

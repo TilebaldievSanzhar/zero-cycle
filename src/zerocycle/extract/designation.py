@@ -32,7 +32,9 @@ _TOKEN = re.compile(
 
 
 def _clean(raw: str) -> str:
-    return re.sub(r"\s+", "", raw.translate(_DASHES)).upper().strip("-.")
+    """Тире → дефис, пробелы у дефисов убрать, остальные пробелы разделяют части: «39-2024 ОВ» → «39-2024-ОВ»."""
+    t = re.sub(r"\s*-\s*", "-", raw.translate(_DASHES).upper().strip())
+    return re.sub(r"\s+", "-", t).strip("-.")
 
 
 def _mixed(token: str) -> bool:
@@ -67,6 +69,12 @@ def parse(raw: str, cb: Codebook | None = None) -> Designation | None:
     issues: list[str] = []
     if raw.translate(_DASHES) != raw:
         issues.append("вместо дефиса — тире")
+    if re.search(r"[^\s-]\s+[^\s-]", raw.translate(_DASHES).strip()):
+        issues.append("пробел вместо дефиса")
+    if re.match(r"\s*[№N]\s*\d", raw):
+        issues.append("знак № в обозначении")
+        text = re.sub(r"^[№N]-?", "", text)
+        tokens = text.split("-")
 
     suffix = None
     last = tokens[-1].translate(_LAT2CYR)
@@ -96,7 +104,9 @@ def parse(raw: str, cb: Codebook | None = None) -> Designation | None:
         return Designation(raw=raw, base=base, suffix="СП", issues=tuple(issues)) if base else None
 
     if found is None:
-        if fallback is None:
+        # незнакомый шифр принимаем, только если перед ним похожее на код базовое обозначение — с цифрами;
+        # иначе «Пояснительная записка» стала бы обозначением
+        if fallback is None or not any(re.search(r"\d", t) for t in tokens[: fallback[0]]):
             return None
         found = fallback
         issues.append("шифр не из справочника юрисдикции")
@@ -114,6 +124,10 @@ def parse(raw: str, cb: Codebook | None = None) -> Designation | None:
     base_tokens = tokens[:i]
     if not base_tokens:
         issues.append("нет базового обозначения")
+    elif not any(re.search(r"\d", t) for t in base_tokens):
+        if any(len(re.sub(r"[^А-ЯЁA-Z]", "", t)) >= 6 for t in base_tokens):
+            return None  # «Заказчик: ГУ … ВК» — проза с шифром в конце, а не обозначение
+        issues.append("в базовом обозначении нет цифр")
     if any(_mixed(t) for t in base_tokens):
         issues.append("в базовом обозначении смешаны латиница и кириллица")
 

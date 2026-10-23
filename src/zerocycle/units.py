@@ -64,7 +64,8 @@ _FORMAT_TEXT = re.compile(r"^\s*[AА]\s*([0-4])\s*(?:[xхХ×*]\s*(\d))?\s*$")
 
 def normalize_format(text: str) -> str | None:
     """Запись формата в графе 26 → каноническое имя: «А4» → «A4», «А3х3» → «A3x3»; иначе None."""
-    cleaned = text.replace("Формат", "").strip()
+    cleaned = re.sub(r"Форма[тm]", "", text).strip()
+    cleaned = cleaned[:1] + cleaned[1:].replace("З", "3").replace("О", "0")  # «АЗ» с буквой З вместо цифры 3
     m = _FORMAT_TEXT.match(cleaned)
     if not m:
         return None

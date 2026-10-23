@@ -117,7 +117,11 @@ class TitleBlock(BaseModel):
     cells: dict[int, BBox] = Field(default_factory=dict)  # графа → рамка ячейки — для якорей
     signatures: list[SignRow] = Field(default_factory=list)
     changes: list[ChangeRow] = Field(default_factory=list)
-    method: Literal["frame", "labels"]  # нашли по линиям рамки или по надписям граф
+    extra: list[str] = Field(default_factory=list)  # тексты ячеек, не сопоставленных с графами
+    # grid — от строки шапки «Изм. … Дата» по фактическим линиям; frame — по геометрии ГОСТ у угла рамки;
+    # labels — по геометрии ГОСТ от шапки без линий
+    method: Literal["grid", "frame", "labels"]
+    scale: float = 1.0  # ширина левой части к 65 мм ГОСТ: печать с уменьшением, нестандартные шаблоны
     confidence: float
 
     def get(self, graph: int) -> str:
@@ -130,7 +134,7 @@ class Page(BaseModel):
     height: float
     paper: str | None = None  # формат по ГОСТ 2.301: A4, A3, A4x3…; None — нестандартный
     landscape: bool = False
-    has_text: bool = True  # есть текстовый слой; нет — скан
+    has_text: bool = True  # есть текстовый слой; нет — скан или текст переведён в кривые: нужен OCR
     title_block: TitleBlock | None = None
 
 

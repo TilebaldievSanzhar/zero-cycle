@@ -14,6 +14,7 @@ from pathlib import Path
 import pdfplumber
 
 MIN_SEGMENT = 2.0  # пт: короче — штриховка и символы, не линии таблиц
+MIN_TEXT_CHARS = 20  # меньше — текстового слоя нет: скан или текст САПР переведён в кривые (нужен OCR)
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,7 @@ class PdfPage:
 
     @property
     def has_text(self) -> bool:
-        return self.chars > 0
+        return self.chars >= MIN_TEXT_CHARS
 
 
 def iter_pdf(path: Path) -> Iterator[PdfPage]:

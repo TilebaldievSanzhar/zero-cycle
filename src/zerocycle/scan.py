@@ -63,7 +63,7 @@ def _document(f: SourceFile) -> Document:
                     paper=paper_format(p.width, p.height),
                     landscape=p.width > p.height,
                     has_text=p.has_text,
-                    title_block=find_title_block(p) if p.has_text else None,
+                    title_block=find_title_block(p),  # без текста — хотя бы рамка по линиям
                 )
             )
     except Exception as e:  # повреждённый файл не должен ронять опись пакета
