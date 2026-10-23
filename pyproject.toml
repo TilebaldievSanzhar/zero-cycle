@@ -1,0 +1,42 @@
+[project]
+name = "zerocycle"
+version = "0.1.0"
+description = "Нулевой цикл: проверка пакета проектной документации перед экспертизой"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.9",
+    "pdfplumber>=0.11",             # слова и линии PDF с координатами (MIT)
+    "pypdfium2>=4.30",              # рендер фрагментов листа (Apache-2.0 / BSD-3)
+    "lxml>=5.3",                    # info.xml ПДЭ, позже XSD Минстроя
+    "reportlab>=4.2",               # генератор засеянных пакетов (BSD)
+]
+
+[project.scripts]
+zerocycle = "zerocycle.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zerocycle"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "RUF001", "RUF002", "RUF003",   # кириллица и типографика в строках и комментариях — норма продукта
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

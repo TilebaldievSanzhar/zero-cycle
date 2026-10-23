@@ -8,7 +8,8 @@
 | Модель | pydantic v2 | MIT | типы пакета и схемы ответов LLM |
 | PDF: текст и координаты | pdfplumber + pdfminer.six | MIT | слова с рамками — для основных надписей и якорей |
 | PDF: рендер фрагмента | pypdfium2 | Apache-2.0 / BSD-3 | рендер листа и рамки без AGPL |
-| XML и XSD | lxml + xmlschema | BSD / MIT | info.xml ПДЭ; XSD Минстроя |
+| XML и XSD | lxml (+ xmlschema с шага 0.7) | BSD / MIT | info.xml ПДЭ; XSD Минстроя. XML из чужих рук — без DTD, внешних сущностей и сети |
+| Генератор засеянных пакетов | reportlab | BSD | PDF с основными надписями по ГОСТ; `invariant=1` — один сид, одни байты |
 | Таблицы | openpyxl | MIT | спецификации и ведомости в xlsx |
 | IFC (ступень 1+) | IfcOpenShell | LGPL-3.0 | только в отдельном процессе-воркере, без изменения библиотеки |
 | Сканы (ступень 1+) | Tesseract или vision-модель | Apache-2.0 / по провайдеру | основные надписи на сканах |
