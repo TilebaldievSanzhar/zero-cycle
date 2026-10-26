@@ -3,12 +3,14 @@
 zerocycle scan <пакет> [--json out.json]          опись: файлы, листы, основные надписи, обозначения, info.xml
 zerocycle gen <папка> [--seed 1] [--count 5]       засеянные пакеты с эталоном (--clean — без дефектов)
 zerocycle designation <обозначение> ...            разбор обозначений по ГОСТ Р 21.101-2020
+zerocycle remarks <заключение.pdf | папка> ...     замечания из заключений экспертизы РК, категории и замер H1
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -82,6 +84,100 @@ def _designation(args: argparse.Namespace) -> int:
     return 0
 
 
+CONCLUSION_NAME = re.compile(r"заключ|қорытынд", re.IGNORECASE)
+
+
+def _conclusion_pages(path: Path, sha: str, cache: Path | None) -> tuple[list[str], int]:
+    from zerocycle.remarks.conclusion import read_pages
+
+    cached = cache / f"{sha[:16]}.json" if cache else None
+    if cached and cached.exists():
+        pages, text_pages = json.loads(cached.read_text(encoding="utf-8"))
+        return pages, text_pages
+    pages, text_pages = read_pages(path)
+    if cached:
+        cache.mkdir(parents=True, exist_ok=True)
+        cached.write_text(json.dumps([pages, text_pages], ensure_ascii=False), encoding="utf-8")
+    return pages, text_pages
+
+
+def _remarks(args: argparse.Namespace) -> int:
+    from zerocycle.ingest.files import sha256_file
+    from zerocycle.remarks.classify import CATEGORIES
+    from zerocycle.remarks.conclusion import Conclusion, parse_conclusion
+    from zerocycle.remarks.measure import apply, dedupe, export_labels, h1, load_labels, load_notes, write_index
+
+    files: list[Path] = []
+    for raw in args.paths:
+        p = Path(raw)
+        if p.is_dir():  # в папке — только файлы с «заключением» в имени: рядом лежат тома ПСД
+            files += sorted(f for f in p.rglob("*.pdf") if CONCLUSION_NAME.search(f.name.replace("_", " ")))
+        else:
+            files.append(p)
+    by_sha: dict[str, Conclusion] = {}
+    for f in files:
+        sha = sha256_file(f)
+        if sha in by_sha:
+            continue
+        try:
+            pages, text_pages = _conclusion_pages(f, sha, Path(args.cache) if args.cache else None)
+        except Exception as e:  # битый или недокачанный PDF — фиксируем и идём дальше
+            print(f"  не прочитан: {f} ({type(e).__name__})", file=sys.stderr)
+            by_sha[sha] = Conclusion(file=f.as_posix(), sha256=sha, pages=0, text_pages=0, status="unreadable")
+            continue
+        by_sha[sha] = parse_conclusion(pages, text_pages, f.as_posix(), sha)
+    conclusions, copies = dedupe(by_sha.values())
+    conclusions.sort(key=lambda c: c.file)
+    labels = load_labels(Path(args.labels)) if args.labels else {}
+    apply(conclusions, labels)
+    if args.export_labels:
+        notes = load_notes(Path(args.labels)) if args.labels else {}
+        n = export_labels(conclusions, Path(args.export_labels), labels, notes)
+        print(f"Черновик разметки: {args.export_labels} ({n} пунктов)")
+    if args.jsonl:
+        with Path(args.jsonl).open("w", encoding="utf-8") as out:
+            for c in conclusions:
+                out.write(c.model_dump_json() + "\n")
+    if args.index:
+        write_index(conclusions, copies, Path(args.index))
+
+    statuses = Counter(c.status for c in conclusions)
+    print(
+        f"Файлов: {len(files)} · заключений: {len(conclusions)} (копии файлов: {len(files) - len(by_sha)}, "
+        f"копии номера или списка пунктов: {len(copies)}) · "
+        f"с пунктами {statuses['ok']}, «не вносились» {statuses['empty']}, без подраздела {statuses['no_section']}, "
+        f"без текста {statuses['no_text']}, не прочитано {statuses['unreadable']}"
+    )
+    for copy, original in copies:
+        same = original.number or "—"
+        print(f"  копия      {len(copy.remarks):>3} п. {copy.number or '—':<16} = {same:<16} {copy.file}")
+    for c in conclusions:
+        if args.items or c.status in ("no_section", "no_text", "unreadable"):
+            print(f"  {c.status:<10} {len(c.remarks):>3} п. {c.number or '—':<16} {c.expert_org or '—':<28} {c.file}")
+        if args.items:
+            for r in c.remarks:
+                mark = "✓" if r.rule == "manual" else " "
+                print(f"      {r.n:>3} {r.discipline or '?':<4} {r.category:<17}{mark} {r.text[:150]}")
+    m = h1(conclusions)
+    total = sum(m.by_category.values())
+    print(f"Пунктов: {total} · просмотрено человеком: {m.reviewed}", end="")
+    print(f" · правила совпали с разметкой: {m.agree} из {m.reviewed}" if m.reviewed else "")
+    print(f"  {'категория':<28}{'пунктов':>8}{'доля':>8}{'заключений':>12}")
+    for cid, cat in CATEGORIES.items():
+        k = m.by_category.get(cid, 0)
+        kind = {True: "форм.", False: "содерж.", None: "—"}[cat.formal]
+        share = f"{k / total:.1%}" if total else "—"
+        print(f"  {cat.name + ' (' + kind + ')':<28}{k:>8}{share:>8}{m.conclusions_by_category.get(cid, 0):>12}")
+    if m.main.n:
+        print(
+            f"H1 — формальные среди пунктов с определённым содержанием: {m.main.p:.1%} "
+            f"[{m.main.lo:.1%}; {m.main.hi:.1%}] ({m.main.k} из {m.main.n}; 95%, бутстреп по заключениям)\n"
+            f"   среднее по заключениям: {m.macro:.1%} · с составом изображения: {m.upper.p:.1%} · "
+            f"с «без содержания» в знаменателе: {m.conservative.p:.1%}"
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -104,6 +200,16 @@ def main(argv: list[str] | None = None) -> int:
     d = sub.add_parser("designation", help="разбор обозначений")
     d.add_argument("text", nargs="+")
     d.set_defaults(func=_designation)
+
+    r = sub.add_parser("remarks", help="замечания из заключений экспертизы РК и замер H1")
+    r.add_argument("paths", nargs="+", help="PDF заключений или папки (в папках — файлы с «заключением» в имени)")
+    r.add_argument("--labels", help="разметка человеком (TSV): категории поверх правил")
+    r.add_argument("--export-labels", help="записать черновик разметки (TSV) для просмотра")
+    r.add_argument("--jsonl", help="сохранить заключения и пункты в JSONL")
+    r.add_argument("--index", help="записать перечень заключений с копиями (TSV)")
+    r.add_argument("--cache", help="папка кэша текста страниц")
+    r.add_argument("--items", action="store_true", help="показать пункты")
+    r.set_defaults(func=_remarks)
 
     args = p.parse_args(argv)
     return args.func(args)

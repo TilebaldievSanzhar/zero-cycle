@@ -7,6 +7,8 @@
     python -I -X utf8 scripts/goszakup_kz_psd.py list  <out.json> [--pages 1]          кандидаты: объявления и их файлы
     python -I -X utf8 scripts/goszakup_kz_psd.py fetch <var/real/goszakup_kz> <id> ... файлы объявлений + manifest.json
         --pick   только срез по разделам (заключение, ОПЗ, паспорт, АР, АС/КЖ, ОВ, ВК, ЭОМ, ГП, ПОС)
+        --only RE     только файлы, чьё имя подходит под выражение, например заключения: --only "заключ|қорытынд"
+        --from-list F объявления и их файлы — из вывода list (без повторных запросов страниц)
         --workers N   параллельных загрузок (по умолчанию 1; файловый сервер отдаёт ~50 КБ/с на поток)
 
 Документы третьих лиц: храним локально в var/ (вне git); в них фамилии и подписи — в корпус для разметки
@@ -15,6 +17,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import re
@@ -124,8 +127,10 @@ def cmd_list(out: str, pages: int = 1) -> None:
                 },
             )
             ids += [i for i in re.findall(r"/ru/announce/index/(\d+)", html) if i not in ids]
-    result = {}
+    result = json.loads(Path(out).read_text(encoding="utf-8")) if Path(out).exists() else {}
     for aid in ids:
+        if aid in result:  # уже в списке с прошлого запуска
+            continue
         files = spec_files(aid)
         exts: dict[str, int] = {}
         for _, n in files:
@@ -158,17 +163,37 @@ def _download(url: str, dest: Path, rec: dict) -> None:
         print(f"  ошибка: {rec['name']}: {e}", flush=True)
 
 
-def cmd_fetch(root: str, ids: list[str], only_pick: bool = False, workers: int = 1) -> None:
+def select(files: list[tuple[str, str]], only_pick: bool = False, only: str | None = None) -> list[tuple[str, str]]:
+    if only:
+        rx = re.compile(only, re.IGNORECASE)
+        files = [(u, n) for u, n in files if rx.search(n.replace("_", " "))]
+    return pick(files) if only_pick else files
+
+
+def cmd_fetch(
+    root: str,
+    ids: list[str],
+    only_pick: bool = False,
+    workers: int = 1,
+    only: str | None = None,
+    listed_by_id: dict[str, dict] | None = None,
+) -> None:
+    listed_by_id = listed_by_id or {}
     for aid in ids:
+        known = listed_by_id.get(aid)
+        listed = [tuple(f) for f in known["files"]] if known else spec_files(aid)
+        wanted = select(listed, only_pick, only)
+        if not wanted:
+            print(f"== {aid}: подходящих файлов нет", flush=True)
+            continue
         d = Path(root) / aid
         (d / "files").mkdir(parents=True, exist_ok=True)
         man_path = d / "manifest.json"
         manifest = json.loads(man_path.read_text(encoding="utf-8")) if man_path.exists() else {}
         manifest.update({"announce_id": aid, "source": f"{BASE}/ru/announce/index/{aid}?tab=documents"})
-        manifest.setdefault("title", title(aid))
+        if "title" not in manifest:
+            manifest["title"] = known["title"] if known else title(aid)
         files = manifest.setdefault("files", {})
-        listed = spec_files(aid)
-        wanted = pick(listed) if only_pick else listed
         print(f"== {aid}: {manifest['title'][:100]} — файлов {len(listed)}, берём {len(wanted)}", flush=True)
         jobs = []
         for url, name in wanted:
@@ -185,12 +210,27 @@ def cmd_fetch(root: str, ids: list[str], only_pick: bool = False, workers: int =
         man_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def main() -> None:
+    ap = argparse.ArgumentParser(description="ПСД из вложений закупок СМР на goszakup.gov.kz")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("list")
+    p.add_argument("out")
+    p.add_argument("--pages", type=int, default=1)
+    p = sub.add_parser("fetch")
+    p.add_argument("root")
+    p.add_argument("ids", nargs="*")
+    p.add_argument("--pick", action="store_true")
+    p.add_argument("--only")
+    p.add_argument("--from-list")
+    p.add_argument("--workers", type=int, default=1)
+    a = ap.parse_args()
+    if a.cmd == "list":
+        cmd_list(a.out, a.pages)
+        return
+    listed = json.loads(Path(a.from_list).read_text(encoding="utf-8")) if a.from_list else {}
+    ids = a.ids or [aid for aid, rec in listed.items() if select([tuple(f) for f in rec["files"]], a.pick, a.only)]
+    cmd_fetch(a.root, ids, only_pick=a.pick, workers=a.workers, only=a.only, listed_by_id=listed)
+
+
 if __name__ == "__main__":
-    cmd, *rest = sys.argv[1:]
-    if cmd == "list":
-        pages = int(rest[rest.index("--pages") + 1]) if "--pages" in rest else 1
-        cmd_list(rest[0], pages)
-    else:
-        workers = int(rest[rest.index("--workers") + 1]) if "--workers" in rest else 1
-        args = [a for i, a in enumerate(rest) if not a.startswith("--") and (i == 0 or rest[i - 1] != "--workers")]
-        cmd_fetch(args[0], args[1:], only_pick="--pick" in rest, workers=workers)
+    main()
