@@ -5,6 +5,7 @@ import pytest
 from zerocycle.bench.draw import Sheet, TitleValues, new_canvas
 from zerocycle.extract.titleblock import find_title_block
 from zerocycle.ingest.pdf import read_pdf
+from zerocycle.packs import context
 from zerocycle.units import paper_format
 
 SIGNS = [
@@ -94,7 +95,7 @@ def parsed(tmp_path_factory):
         s.title_block(values, grid=grid, with_lines=lines)
         c.showPage()
     c.save()
-    return [(p, find_title_block(p)) for p in read_pdf(path)]
+    return [(p, find_title_block(p, context("ru"))) for p in read_pdf(path)]
 
 
 @pytest.mark.parametrize("i", range(len(PAGES)))

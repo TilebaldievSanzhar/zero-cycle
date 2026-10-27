@@ -10,6 +10,9 @@
 Базовое обозначение организация задаёт сама — номер договора, код объекта, через дефисы и точки, —
 поэтому шифр ищем справа налево по справочнику юрисдикции, а не по позиции в строке. Разбор нейтральный:
 что означают номера после шифра, решает `interpret` по стадии и виду объекта.
+
+Справочник шифров передаёт вызывающий — из контекста пакета (`packs.context`); справочника по умолчанию нет.
+Грамматика — дефисы, точки, суффиксы «-С» и «-СП» — общая для семьи СПДС и живёт здесь.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from __future__ import annotations
 import re
 
 from zerocycle.model import Designation, SectionRef
-from zerocycle.packs import Codebook, codebook
+from zerocycle.packs import Codebook
 
 _DASHES = str.maketrans(dict.fromkeys("‐‑‒–—―−", "-"))
 _LAT2CYR = str.maketrans("ABCEHKMOPTXY", "АВСЕНКМОРТХУ")
@@ -59,9 +62,8 @@ def _match_known(token: str, known: frozenset[str]) -> tuple[re.Match[str] | Non
     return None, None
 
 
-def parse(raw: str, cb: Codebook | None = None) -> Designation | None:
+def parse(raw: str, cb: Codebook) -> Designation | None:
     """«2345-ИОС4.1.2-С» → Designation; None — строка не похожа на обозначение."""
-    cb = cb or codebook()
     text = _clean(raw)
     if not text:
         return None
@@ -144,9 +146,8 @@ def parse(raw: str, cb: Codebook | None = None) -> Designation | None:
     )
 
 
-def interpret(d: Designation, cb: Codebook | None = None, linear: bool = False) -> SectionRef | None:
+def interpret(d: Designation, cb: Codebook, linear: bool = False) -> SectionRef | None:
     """Место документа стадии «П» в составе ПД: раздел по ПП 87, подраздел, часть, книга."""
-    cb = cb or codebook()
     if d.code is None:
         return None
     sec = cb.section(d.code, linear)

@@ -62,7 +62,7 @@ class Sheet:
         self.w, self.h = (long_, short) if landscape else (short, long_)
         self.c = canvas
         self.c.setPageSize((pt(self.w), pt(self.h)))
-        self.profile: TitleBlockProfile = titleblock_profile()
+        self.profile: TitleBlockProfile = titleblock_profile("2020")  # листы засеянного корпуса — ГОСТ Р 21.101-2020
 
     # --- примитивы -------------------------------------------------------------------------------
     def line(self, x0: float, y0: float, x1: float, y1: float, width: float = THIN, dash: bool = False) -> None:

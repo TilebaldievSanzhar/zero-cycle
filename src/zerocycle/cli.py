@@ -1,9 +1,11 @@
 """Командная строка «Нулевого цикла».
 
-zerocycle scan <пакет> [--json out.json]          опись: файлы, листы, основные надписи, обозначения, info.xml
+zerocycle scan <пакет> [-j kz] [--org org.toml] [--json out.json]   опись: файлы, листы, основные надписи, обозначения
 zerocycle gen <папка> [--seed 1] [--count 5]       засеянные пакеты с эталоном (--clean — без дефектов)
-zerocycle designation <обозначение> ...            разбор обозначений по ГОСТ Р 21.101-2020
+zerocycle designation <обозначение> ... [-j kz]    разбор обозначений по справочнику юрисдикции
 zerocycle remarks <заключение.pdf | папка> ...     замечания из заключений экспертизы РК, категории и замер H1
+
+Юрисдикция (-j) выбирает справочник шифров и редакцию СПДС: ru — ГОСТ Р 21.101-2020, kz — ГОСТ 21.101-97.
 """
 
 from __future__ import annotations
@@ -17,22 +19,27 @@ from pathlib import Path
 
 from zerocycle.extract.designation import interpret, parse
 from zerocycle.model import Media, Package
+from zerocycle.packs import Context, available, context
 
 
 def _scan(args: argparse.Namespace) -> int:
     from zerocycle.scan import scan
 
-    pkg = scan(Path(args.package))
+    ctx = context(args.jurisdiction, args.org)
+    pkg = scan(Path(args.package), ctx)
     if args.json:
         Path(args.json).write_text(pkg.model_dump_json(indent=1), encoding="utf-8")
-    _print_summary(pkg)
+    _print_summary(pkg, ctx)
     return 0
 
 
-def _print_summary(pkg: Package) -> None:
+def _print_summary(pkg: Package, ctx: Context) -> None:
     pages = [p for d in pkg.documents for p in d.pages]
     forms = Counter(p.title_block.form for p in pages if p.title_block)
     media = Counter(d.media.value for d in pkg.documents)
+    unverified = "" if ctx.titleblocks.verified else " (профиль основных надписей не сверен со стандартом)"
+    org = f" · организация: {ctx.organization}" if ctx.organization else ""
+    print(f"Юрисдикция: {ctx.title} · СПДС: {ctx.standard}{unverified}{org}")
     print(f"Пакет: {pkg.root} · базовое обозначение: {pkg.base_designation or '—'}")
     print(f"Файлов: {len(pkg.documents)} ({', '.join(f'{k} {v}' for k, v in media.most_common())})")
     no_tb = sum(1 for p in pages if p.title_block is None)
@@ -66,12 +73,13 @@ def _gen(args: argparse.Namespace) -> int:
 
 
 def _designation(args: argparse.Namespace) -> int:
+    cb = context(args.jurisdiction, args.org).codebook
     for raw in args.text:
-        d = parse(raw)
+        d = parse(raw, cb)
         if d is None:
             print(f"{raw}: не обозначение")
             continue
-        sec = interpret(d)
+        sec = interpret(d, cb)
         where = f"раздел {sec.number}" if sec and sec.number else "—"
         if sec and sec.subsection:
             where += f", подраздел {sec.subsection}"
@@ -184,9 +192,20 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="zerocycle", description="Нулевой цикл: проверка пакета ПД перед экспертизой")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    def pack_options(cmd: argparse.ArgumentParser) -> None:
+        cmd.add_argument(
+            "-j",
+            "--jurisdiction",
+            choices=available(),
+            default="ru",
+            help="пакет юрисдикции: справочник шифров и редакция СПДС (по умолчанию ru)",
+        )
+        cmd.add_argument("--org", help="слой организации: TOML со своими шифрами, подписями граф и формами штампа")
+
     s = sub.add_parser("scan", help="опись пакета")
     s.add_argument("package", help="папка или zip")
     s.add_argument("--json", help="сохранить опись в JSON")
+    pack_options(s)
     s.set_defaults(func=_scan)
 
     g = sub.add_parser("gen", help="засеянные пакеты с эталоном")
@@ -199,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
 
     d = sub.add_parser("designation", help="разбор обозначений")
     d.add_argument("text", nargs="+")
+    pack_options(d)
     d.set_defaults(func=_designation)
 
     r = sub.add_parser("remarks", help="замечания из заключений экспертизы РК и замер H1")

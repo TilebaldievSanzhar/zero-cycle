@@ -3,6 +3,8 @@
 Обозначение документа берётся по убыванию надёжности: из info.xml (атрибут Code), из графы 1 первой
 основной надписи (у содержания тома «-С» отбрасывается), из имени файла. Расхождения между ними — не здесь,
 а в правилах: опись только собирает факты.
+
+Справочник шифров и профиль основных надписей — из контекста пакета: юрисдикцию называет вызывающий.
 """
 
 from __future__ import annotations
@@ -16,14 +18,14 @@ from zerocycle.ingest.files import SourceFile, open_package
 from zerocycle.ingest.pde import read_info_xml
 from zerocycle.ingest.pdf import iter_pdf
 from zerocycle.model import Designation, Document, Media, Package, Page
-from zerocycle.packs import codebook
+from zerocycle.packs import Codebook, Context
 from zerocycle.units import paper_format
 
 
-def scan(path: Path, workdir: Path | None = None, jurisdiction: str = "ru") -> Package:
-    cb = codebook(jurisdiction)
+def scan(path: Path, ctx: Context, workdir: Path | None = None) -> Package:
+    cb = ctx.codebook
     _root, files = open_package(Path(path), workdir)
-    pkg = Package(root=Path(path).name, jurisdiction=jurisdiction)
+    pkg = Package(root=Path(path).name, jurisdiction=ctx.jurisdiction, spds=ctx.edition, organization=ctx.organization)
 
     info_file = next((f for f in files if f.path.lower() == "info.xml"), None)
     if info_file:
@@ -32,12 +34,12 @@ def scan(path: Path, workdir: Path | None = None, jurisdiction: str = "ru") -> P
     for f in files:
         if f is info_file:
             continue
-        pkg.documents.append(_document(f))
+        pkg.documents.append(_document(f, ctx))
 
-    _link_pde(pkg)
+    _link_pde(pkg, cb)
     for doc in pkg.documents:
         if doc.designation is None:
-            doc.designation = _designation_from_pages(doc) or _designation_from_name(doc)
+            doc.designation = _designation_from_pages(doc, cb) or _designation_from_name(doc, cb)
         if doc.designation is not None:
             doc.section = interpret(doc.designation, cb)
         if doc.title is None:
@@ -49,7 +51,7 @@ def scan(path: Path, workdir: Path | None = None, jurisdiction: str = "ru") -> P
     return pkg
 
 
-def _document(f: SourceFile) -> Document:
+def _document(f: SourceFile, ctx: Context) -> Document:
     doc = Document(path=f.path, sha256=f.sha256, size=f.size, media=f.media)
     if f.media != Media.pdf:
         return doc
@@ -63,7 +65,7 @@ def _document(f: SourceFile) -> Document:
                     paper=paper_format(p.width, p.height),
                     landscape=p.width > p.height,
                     has_text=p.has_text,
-                    title_block=find_title_block(p),  # без текста — хотя бы рамка по линиям
+                    title_block=find_title_block(p, ctx),  # без текста — хотя бы рамка по линиям
                 )
             )
     except Exception as e:  # повреждённый файл не должен ронять опись пакета
@@ -71,7 +73,7 @@ def _document(f: SourceFile) -> Document:
     return doc
 
 
-def _link_pde(pkg: Package) -> None:
+def _link_pde(pkg: Package, cb: Codebook) -> None:
     """Документы info.xml → файлы пакета: GUID, обозначение и наименование; потерянные — в замечания."""
     if pkg.pde is None:
         return
@@ -85,7 +87,7 @@ def _link_pde(pkg: Package) -> None:
             continue
         doc.guid = node.guid
         if code := node.attrs.get("Code"):
-            doc.designation = parse(code)
+            doc.designation = parse(code, cb)
         doc.title = node.attrs.get("DocumentName") or doc.title
     listed = {n.file_name.lower() for n in pkg.pde.nodes if n.kind == "document" and n.file_name}
     for d in pkg.documents:
@@ -93,18 +95,18 @@ def _link_pde(pkg: Package) -> None:
             pkg.pde.issues.append(f"файл не описан в info.xml: {d.path}")
 
 
-def _designation_from_pages(doc: Document) -> Designation | None:
+def _designation_from_pages(doc: Document, cb: Codebook) -> Designation | None:
     for page in doc.pages:
         tb = page.title_block
-        if tb and (d := parse(tb.get(1))):
+        if tb and (d := parse(tb.get(1), cb)):
             if d.suffix == "С":  # первым листом тома часто идёт содержание «<том>-С»
                 d = d.model_copy(update={"suffix": None})
             return d
     return None
 
 
-def _designation_from_name(doc: Document) -> Designation | None:
-    return parse(PurePosixPath(doc.path).stem.split(" ")[0])
+def _designation_from_name(doc: Document, cb: Codebook) -> Designation | None:
+    return parse(PurePosixPath(doc.path).stem.split(" ")[0], cb)
 
 
 def _title_from_pages(doc: Document) -> str | None:

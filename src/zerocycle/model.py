@@ -196,7 +196,9 @@ class WorkKind(StrEnum):
 
 class Package(BaseModel):
     root: str  # как пакет назван при приёме: папка или zip
-    jurisdiction: str = "ru"
+    jurisdiction: str  # пакет юрисдикции, по которому разобран: ru, kz
+    spds: str | None = None  # редакция СПДС, по профилю которой читались основные надписи: 2020, 97
+    organization: str | None = None  # слой организации, если подключён
     stage: Literal["П", "Р"] = "П"
     object_kind: ObjectKind | None = None
     work_kind: WorkKind | None = None

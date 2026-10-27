@@ -554,7 +554,7 @@ def _xy(s: Sheet, x: float, y: float) -> tuple[float, float]:
 
 def _write_info_xml(spec: PackageSpec, out: Path) -> None:
     """info.xml по ГОСТ Р 21.101-2020, прил. Ф: папки разделов и подразделов, документы с GUID."""
-    cb = codebook()
+    cb = codebook("ru")  # засеянный корпус — пакеты РФ
 
     def attrs(el, **kw: str) -> None:
         box = etree.SubElement(el, "Attributes")

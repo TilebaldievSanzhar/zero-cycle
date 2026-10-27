@@ -13,7 +13,11 @@
    15 мм и вертикали колонок. Нужен там, где текст переведён в кривые: рамку видно, слов нет.
 3. «labels» — по геометрии ГОСТ от шапки, когда линий нет (штамп напечатан текстом).
 
-Во 2-м и 3-м способах графы берутся по ячейкам профиля формы (`packs/spds/titleblocks.toml`).
+Во 2-м и 3-м способах графы берутся по ячейкам профиля формы.
+
+Геометрия форм, подписи граф и их образцы, формы юрлиц и справочник шифров приходят из контекста пакета
+(`packs.context`): профиль редакции СПДС, пакет юрисдикции, слой организации. В коде — допуски поиска и смысл
+номеров граф, общий для семьи СПДС.
 """
 
 from __future__ import annotations
@@ -21,25 +25,18 @@ from __future__ import annotations
 import itertools
 import re
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 
 from zerocycle.extract.designation import parse
 from zerocycle.ingest.pdf import PdfPage, Segment, Word
 from zerocycle.model import BBox, ChangeRow, SignRow, TitleBlock
-from zerocycle.packs import FormProfile, TitleBlockProfile, codebook, titleblock_profile
+from zerocycle.packs import Codebook, Context, FormProfile, TitleBlockProfile
 from zerocycle.units import pt
 
 TOL_MM = 3.0  # допуск положения рамки и линий
-WIDTH_MM = 185.0
-LEFT_MM = 65.0  # ширина левой части (изменения и подписи) у ГОСТ 21.101 и ГОСТ 2.104
-HEIGHTS_MM = (55.0, 40.0, 15.0)  # от высокой к низкой: у формы 3 есть и короткие горизонтали
-LEFT_COLUMNS_MM = (10.0, 20.0, 30.0, 40.0, 55.0, 65.0)  # границы колонок таблицы изменений
-MIN_COLUMNS = 4  # сколько из них должно найтись, чтобы поверить рамке
-# центр строки шапки «Изм. … Дата» над низом основной надписи, мм → форма
-HEADER_FROM_BOTTOM = {3: 32.5, 5: 27.5, 6: 2.5}
-LABELS = {"стадия": 6, "лист": 7, "листов": 8, "масса": 24, "масштаб": 25}
-MAX_CHANGE_ROWS, MAX_SIGN_ROWS = 4, 8  # у форм ГОСТ — до 4 строк изменений и 6 строк подписей
+MIN_COLUMNS = 4  # сколько границ колонок таблицы изменений должно найтись, чтобы поверить рамке
+EXTRA_SIGN_ROWS = 2  # в реальных штампах бывает на пару строк подписей больше, чем в форме
 DOUBLE = pt(1.2)  # таблицы Word рисуют у каждой ячейки свою рамку с зазором ~0,5 мм: две линии — одна граница
-ORG = re.compile(r"\b(ТОО|ООО|ОАО|ЗАО|АО|ПАО|НАО|ГУ|ГКП|РГП|ИП|LLP|JSC)\b|«|\"")
 
 
 @dataclass(frozen=True)
@@ -55,18 +52,26 @@ def _key(text: str) -> str:
     return re.sub(r"[\s.]", "", text).lower()
 
 
-def find_title_block(page: PdfPage, profile: TitleBlockProfile | None = None) -> TitleBlock | None:
-    profile = profile or titleblock_profile()
-    if tb := _by_grid(page):
+def find_title_block(page: PdfPage, ctx: Context) -> TitleBlock | None:
+    profile = ctx.titleblocks
+    if tb := _by_grid(page, ctx):
         return tb
     right, bottom = _corner(page, profile)
-    found = _by_frame(page, right, bottom) or _by_labels(page, profile, right, bottom)
+    found = _by_frame(page, profile, right, bottom) or _by_labels(page, profile, right, bottom)
     if found is None:
         return None
     form, frame, method = found
-    if form == 3 and _has_words(page, frame, {"масса", "масштаб"}):
+    if form == 3 and _has_words(page, frame, _form4_labels(profile)):
         form = 4
     return _read(page, profile.forms[form], profile, frame, method)
+
+
+def _form4_labels(profile: TitleBlockProfile) -> set[str]:
+    """Подписи, которые есть у формы 4 и нет у формы 3: «Масса», «Масштаб»."""
+    f3, f4 = profile.forms.get(3), profile.forms.get(4)
+    if f3 is None or f4 is None:
+        return set()
+    return {_key(x) for x in f4.labels} - {_key(x) for x in f3.labels}
 
 
 # --- общие помощники ------------------------------------------------------------------------------
@@ -100,27 +105,30 @@ def _merge(values: list[float], tol: float = 1.0) -> list[float]:
 # --- 1. от шапки по фактическим линиям --------------------------------------------------------------
 
 
-def _header_role(key: str) -> int | None:
-    if key.startswith("изм"):
-        return 14
-    if key.startswith(("кол", "код")):
-        return 15
-    if key == "лист":
-        return 16
-    if "док" in key:
-        return 17
-    if key.startswith("подп"):
-        return 18
-    if key.startswith("дат"):
-        return 19
-    return None
+Roles = dict[int, tuple[str, ...]]  # графа таблицы изменений → образцы подписи шапки (fnmatch, как `_key`)
 
 
-def _find_header(page: PdfPage) -> list[Word] | None:
+def _roles(profile: TitleBlockProfile) -> Roles:
+    return {g: tuple(_key(p) for p in patterns) for g, patterns in profile.header_roles.items()}
+
+
+def _header_role(key: str, roles: Roles) -> int | None:
+    """Графа по подписи шапки: «колуч» → 15, «nдок» → 17."""
+    return next((g for g, patterns in roles.items() if any(fnmatchcase(key, p) for p in patterns)), None)
+
+
+def _stems(patterns: tuple[str, ...]) -> tuple[str, ...]:
+    """Образцы без «*» — для поиска в склеенной строке шапки: «Изм.Кол.уч» → «измколуч»."""
+    return tuple(p.replace("*", "") for p in patterns)
+
+
+def _find_header(page: PdfPage, roles: Roles) -> list[Word] | None:
     """Строка шапки «Изм. … Дата»: самая нижняя на листе, при равенстве — самая правая."""
+    first, last = roles[min(roles)], _stems(roles[max(roles)])
+    groups = [_stems(patterns) for patterns in roles.values()]
     best: tuple[float, float, list[Word]] | None = None
     for w in page.words:
-        if not _key(w.text).startswith("изм"):
+        if not any(fnmatchcase(_key(w.text), p) for p in first):
             continue
         tol = max(2.0, (w.bottom - w.top) * 0.6)
         row = sorted(
@@ -128,10 +136,10 @@ def _find_header(page: PdfPage) -> list[Word] | None:
             key=lambda v: v.x0,
         )
         joined = "".join(_key(v.text) for v in row)
-        if "дат" not in joined:
+        if not any(s in joined for s in last):
             continue
-        hits = sum(t in joined for t in ("изм", "лист", "док", "подп", "дат")) + ("кол" in joined or "код" in joined)
-        end = next((i for i, v in enumerate(row) if "дат" in _key(v.text)), None)
+        hits = sum(any(s in joined for s in group) for group in groups)
+        end = next((i for i, v in enumerate(row) if any(s in _key(v.text) for s in last)), None)
         if hits < 4 or end is None:
             continue
         cand = (w.cy, w.cx, row[: end + 1])
@@ -170,8 +178,10 @@ def _overlap(a0: float, a1: float, b0: float, b1: float) -> float:
     return max(0.0, min(a1, b1) - max(a0, b0))
 
 
-def _by_grid(page: PdfPage) -> TitleBlock | None:
-    head = _find_header(page)
+def _by_grid(page: PdfPage, ctx: Context) -> TitleBlock | None:
+    profile = ctx.titleblocks
+    roles = _roles(profile)
+    head = _find_header(page, roles)
     if head is None:
         return None
     first, last = head[0], head[-1]
@@ -196,7 +206,7 @@ def _by_grid(page: PdfPage) -> TitleBlock | None:
         return None  # без линий сетку не восстановить — дальше способы по геометрии ГОСТ
     xl, xm = max(left_lines), min(right_lines)
     cols = [x for x in vx if xl <= x <= xm]
-    scale = (xm - xl) / pt(LEFT_MM)
+    scale = (xm - xl) / pt(profile.left_width)
     h_bot = below[0]
     # верх шапки: ближайшая линия выше; нет её рядом (шапка — верхняя строка, а линия над ней не нарисована) —
     # шапка той же высоты, что строка под ней
@@ -212,13 +222,13 @@ def _by_grid(page: PdfPage) -> TitleBlock | None:
     # бывает у форм: иначе в основную надпись попадёт таблица, стоящая на ней вплотную
     top, changes = h_top, []
     for y in reversed([y for y in above if y < h_top - 1]):
-        if len(changes) >= MAX_CHANGE_ROWS or not 0.6 * rh <= top - y <= 1.4 * rh:
+        if len(changes) >= profile.max_change_rows or not 0.6 * rh <= top - y <= 1.4 * rh:
             break
         changes.insert(0, (y, top))
         top = y
     bottom, signs = h_bot, []
     for y in below[1:]:
-        if len(signs) >= MAX_SIGN_ROWS or not 0.6 * rh <= y - bottom <= 1.4 * rh:
+        if len(signs) >= profile.max_sign_rows + EXTRA_SIGN_ROWS or not 0.6 * rh <= y - bottom <= 1.4 * rh:
             break
         signs.append((bottom, y))
         bottom = y
@@ -237,7 +247,7 @@ def _by_grid(page: PdfPage) -> TitleBlock | None:
                     xr, grown = s.x1, True
     else:
         cover = [s.x0 for s in page.vsegs if s.x0 > xm + pt(20) and s.top <= top + pt(2) and s.bottom >= bottom - pt(2)]
-        xr = min(cover) if cover else xl + (xm - xl) * WIDTH_MM / LEFT_MM
+        xr = min(cover) if cover else xl + (xm - xl) * profile.width / profile.left_width
 
     # ячейки правой части: для каждого слова — ближайшие линии со всех сторон
     vsegs = [s for s in page.vsegs if xm - 2 <= s.x0 <= xr + 2 and s.bottom >= top - 2 and s.top <= bottom + 2]
@@ -246,34 +256,34 @@ def _by_grid(page: PdfPage) -> TitleBlock | None:
     for w in _words_in(page.words, (xm + 0.5, top, xr, bottom)):
         box = _enclosing(w, vsegs, hsegs, (xm, top, xr, bottom))
         cells.setdefault(tuple(round(v) for v in box), _Cell(box)).words.append(w)
-    tb = _assign(list(cells.values()), xm, top, xr, bottom)
+    tb = _assign(list(cells.values()), xm, top, xr, bottom, ctx)
 
     # графа 27 — строка над основной надписью, если её верх отчерчен линией; 26 — под основной надписью
-    row27 = pt(10) * scale
+    row27 = pt(profile.customer_row) * scale
     lined = any(abs(s.top - (top - row27)) <= pt(2) and s.x1 > xm and s.x0 < xr for s in page.hsegs) and any(
         abs(s.x0 - xm) <= pt(2) and s.top <= top - row27 + pt(2) and s.bottom >= top - pt(2) for s in page.vsegs
     )
     above_words = _words_in(page.words, (xm, top - row27, xr, top - 0.5))
-    if lined and above_words and (text := _join(above_words)) and ORG.search(text):  # 27 — наименование заказчика
+    if lined and above_words and (text := _join(above_words)) and ctx.org.search(text):  # 27 — наименование заказчика
         tb.graphs[27] = text
     below_words = _words_in(page.words, (xm, bottom + 0.5, xr, bottom + pt(8) * scale))
-    fmt = re.split(r"Форма[тm]", _join(below_words), maxsplit=1)  # в шрифтах САПР «т» бывает латинской «m»
+    fmt = re.split("|".join(map(re.escape, profile.format_labels)), _join(below_words), maxsplit=1)
     if len(fmt) == 2 and (value := fmt[1].strip()):
         tb.graphs[26] = value.split()[0]
 
     # левая часть: подписи под шапкой, изменения над ней
-    roles = _column_roles(head, cols)
+    change_cols = _column_roles(head, cols, roles)
     for y0, y1 in signs:
         row = _words_in(page.words, (xl, y0, xm, y1))
         if not row:
             continue
-        parts = _split_signature(row, xl, xm, page, y0, y1)
+        parts = _split_signature(row, xl, xm, page, y0, y1, profile)
         tb.signatures.append(SignRow(role=parts[0], name=parts[1], date=parts[2], bbox=(xl, y0, xm, y1)))
     for y0, y1 in changes:
         row = _words_in(page.words, (xl, y0, xm, y1))
         if not row:
             continue
-        by_role = {r: _join([w for w in row if a <= w.cx <= b]) for r, (a, b) in roles.items()}
+        by_role = {r: _join([w for w in row if a <= w.cx <= b]) for r, (a, b) in change_cols.items()}
         tb.changes.append(
             ChangeRow(
                 change=by_role.get(14, ""),
@@ -299,46 +309,48 @@ def _enclosing(w: Word, vsegs: list[Segment], hsegs: list[Segment], area: BBox) 
     return (max(left, x_min), max(up, y_min), min(right, x_max), min(down, y_max))
 
 
-def _column_roles(head: list[Word], cols: list[float]) -> dict[int, tuple[float, float]]:
-    """Колонки таблицы изменений по словам шапки: роль → (x0, x1); склеенные слова — по порядку ГОСТ."""
-    spans = list(itertools.pairwise(cols))
-    roles: dict[int, tuple[float, float]] = {}
-    for a, b in spans:
+def _column_roles(head: list[Word], cols: list[float], roles: Roles) -> dict[int, tuple[float, float]]:
+    """Колонки таблицы изменений по словам шапки: графа → (x0, x1); склеенные слова — по порядку ГОСТ."""
+    out: dict[int, tuple[float, float]] = {}
+    for a, b in itertools.pairwise(cols):
         keys = [_key(w.text) for w in head if a <= w.cx <= b]
         for k in keys:
-            if (r := _header_role(k)) is not None and r not in roles:
-                roles[r] = (a, b)
-    return roles
+            if (r := _header_role(k, roles)) is not None and r not in out:
+                out[r] = (a, b)
+    return out
 
 
-def _split_signature(row: list[Word], xl: float, xm: float, page: PdfPage, y0: float, y1: float) -> list[str]:
-    """Строка подписей → должность, фамилия, дата. Колонки — по линиям строки, иначе по долям ГОСТ (20/20/15/10)."""
+def _split_signature(
+    row: list[Word], xl: float, xm: float, page: PdfPage, y0: float, y1: float, profile: TitleBlockProfile
+) -> list[str]:
+    """Строка подписей → должность, фамилия, дата. Колонки — по линиям строки, иначе по долям профиля (графы 10–13)."""
     yc = (y0 + y1) / 2
     xs = _merge([s.x0 for s in page.vsegs if s.top <= yc <= s.bottom and xl - 1 <= s.x0 <= xm + 1])
     inner = [x for x in xs if xl + 2 < x < xm - 2]
-    if len(inner) == 3:  # ровно четыре колонки: 10, 11, 12, 13
+    columns = list(profile.sign_columns.values())
+    if len(inner) == len(columns) - 1:  # линии между всеми колонками: 10, 11, 12, 13
         b = [xl, *inner, xm]
     else:
         w = xm - xl
-        b = [xl, xl + w * 20 / 65, xl + w * 40 / 65, xl + w * 55 / 65, xm]
+        b = [xl, *(xl + w * x1 / profile.left_width for _x0, x1 in columns[:-1]), xm]
     role = _join([v for v in row if b[0] <= v.cx < b[1]])
     name = _join([v for v in row if b[1] <= v.cx < b[2]])
     date = _join([v for v in row if b[3] <= v.cx <= b[4]])
     return [role, name, date]
 
 
-def _designation_in(text: str) -> str | None:
-    """Обозначение в тексте ячейки: вся ячейка или отдельное слово с шифром из справочника.
+def _designation_in(text: str, cb: Codebook) -> str | None:
+    """Обозначение в тексте ячейки: вся ячейка или отдельное слово с шифром из справочника юрисдикции.
 
     Без базового обозначения («-ОВ», «ПОС») принимаем, только если в ячейке больше ничего нет: иначе
     «Альбом АР» стал бы обозначением.
     """
-    known = codebook().all_codes
+    known = cb.all_codes
     text = re.sub(r"(^|\s)[-–]\s+(?=[А-ЯЁA-Z])", r"\1-", text)  # «Заказ: - ОВ.СО» → «-ОВ.СО»
     words = text.split()
     single = len(words) == 1
     for cand in [text, *words]:
-        d = parse(cand)
+        d = parse(cand, cb)
         if not d or not (d.code in known or d.suffix == "СП") or "шифр не из справочника юрисдикции" in d.issues:
             continue
         # базовое обозначение — код договора или объекта: с цифрами и коротко; иначе это проза
@@ -371,19 +383,20 @@ class _Slots:
         self.used.add(i)
 
 
-def _assign(cells: list[_Cell], xm: float, top: float, xr: float, bottom: float) -> TitleBlock:
+def _assign(cells: list[_Cell], xm: float, top: float, xr: float, bottom: float, ctx: Context) -> TitleBlock:
     """Графы правой части по взаимному расположению ячеек (см. описание модуля)."""
     s = _Slots(cells)
+    graph_of = {_key(label): g for label, g in ctx.titleblocks.label_graphs.items()}
 
-    # подписи «Стадия», «Лист», «Листов», «Масса», «Масштаб»; «Лист 3» в одной ячейке — форма 4
+    # подписи «Стадия», «Лист», «Листов», «Масса», «Масштаб»; «Лист 3» в одной ячейке (графы 7 и 8) — форма 4
     labels: dict[int, _Cell] = {}
     for i, c in enumerate(cells):
         k = _key(c.text)
-        if k in LABELS:
-            labels[LABELS[k]] = c
+        if k in graph_of:
+            labels[graph_of[k]] = c
             s.used.add(i)
-        elif c.words and _key(c.words[0].text) in ("лист", "листов") and len(c.words) > 1:
-            s.take(LABELS[_key(c.words[0].text)], i, _join(c.words[1:]))
+        elif c.words and graph_of.get(_key(c.words[0].text)) in (7, 8) and len(c.words) > 1:
+            s.take(graph_of[_key(c.words[0].text)], i, _join(c.words[1:]))
 
     # значения под подписями: та же колонка (не шире полутора подписей), ближайшая ячейка ниже. Пустую
     # ячейку значения не видно — тогда соседняя широкая (организация) не должна выдать себя за значение
@@ -404,11 +417,11 @@ def _assign(cells: list[_Cell], xm: float, top: float, xr: float, bottom: float)
                 band.append(cells[i])
 
     # обозначение — самая верхняя ячейка с обозначением; нет — самая верхняя широкая ячейка (что там написано)
-    des = [i for i in s.free() if _designation_in(cells[i].text)]
+    des = [i for i in s.free() if _designation_in(cells[i].text, ctx.codebook)]
     g1_bottom = top
     if des:
         i = min(des, key=lambda j: (cells[j].top, -len(cells[j].text)))
-        found = _designation_in(cells[i].text)
+        found = _designation_in(cells[i].text, ctx.codebook)
         s.take(1, i, found)
         if found != cells[i].text and (rest := cells[i].text.replace(found, " ").strip()):
             s.rest.append(rest)  # «Заказчик: …» в одной ячейке с обозначением — не терять
@@ -428,7 +441,7 @@ def _assign(cells: list[_Cell], xm: float, top: float, xr: float, bottom: float)
         org = [i for i in s.free() if cells[i].top >= lab_bottom - 2 and cells[i].x0 >= lab_x0 - 2]
         org_top, org_bottom = lab_bottom, bottom
         if org:
-            i = max(org, key=lambda j: (bool(ORG.search(cells[j].text)), cells[j].bottom))
+            i = max(org, key=lambda j: (bool(ctx.org.search(cells[j].text)), cells[j].bottom))
             s.take(9, i)
             org_top, org_bottom = cells[i].top, cells[i].bottom
         for i in s.free():  # между обозначением и полосой подписей — графа 2
@@ -497,25 +510,24 @@ def _coverage(segs: list[Segment], y: float, x0: float, x1: float) -> float:
     return covered / (x1 - x0) if x1 > x0 else 0.0
 
 
-def _columns(vsegs: list[Segment], left: float, top: float) -> int:
+def _columns(vsegs: list[Segment], left: float, top: float, columns: tuple[float, ...]) -> int:
     """Сколько границ колонок таблицы изменений начинаются от верха основной надписи."""
     n = 0
-    for x in LEFT_COLUMNS_MM:
+    for x in columns:
         cx = left + pt(x)
         if any(abs(s.x0 - cx) <= 1.5 and s.top <= top + pt(2) and s.bottom >= top + pt(4) for s in vsegs):
             n += 1
     return n
 
 
-def _by_frame(page: PdfPage, right: float, bottom: float) -> tuple[int, _Frame, str] | None:
-    left = right - pt(WIDTH_MM)
-    for h in HEIGHTS_MM:
+def _by_frame(page: PdfPage, profile: TitleBlockProfile, right: float, bottom: float) -> tuple[int, _Frame, str] | None:
+    left = right - pt(profile.width)
+    for h, form in profile.heights.items():
         top = bottom - pt(h)
         if _coverage(page.hsegs, top, left, right) < 0.95:
             continue
-        if _columns(page.vsegs, left, top) < MIN_COLUMNS:
+        if _columns(page.vsegs, left, top, profile.left_columns) < MIN_COLUMNS:
             continue
-        form = {55.0: 3, 40.0: 5, 15.0: 6}[h]
         return form, _Frame(left, top, right, bottom), "frame"
     return None
 
@@ -526,18 +538,19 @@ def _by_frame(page: PdfPage, right: float, bottom: float) -> tuple[int, _Frame, 
 def _by_labels(
     page: PdfPage, profile: TitleBlockProfile, right: float, bottom: float
 ) -> tuple[int, _Frame, str] | None:
-    left = right - pt(WIDTH_MM)
+    left = right - pt(profile.width)
     zone = [
         w for w in page.words if w.cx >= left - pt(5) and w.cx <= right and w.cy >= bottom - pt(70) and w.cy <= bottom
     ]
-    heads = [w for w in zone if _key(w.text) == "изм" and w.cx <= left + pt(12)]
+    first = _key(profile.header_labels[0])  # «Изм.»
+    heads = [w for w in zone if _key(w.text) == first and w.cx <= left + pt(12)]
     for head in heads:
         row = [w for w in zone if abs(w.cy - head.cy) <= pt(1.5)]
         labels = {_key(w.text) for w in row}
         if len(labels & {_key(x) for x in profile.header_labels}) < 3:
             continue
         from_bottom = (bottom - head.cy) / pt(1)
-        for form, expected in HEADER_FROM_BOTTOM.items():
+        for form, expected in profile.header_from_bottom.items():
             if abs(from_bottom - expected) <= 2.0:
                 height = profile.forms[form].height
                 return form, _Frame(left, bottom - pt(height), right, bottom), "labels"
@@ -554,7 +567,7 @@ def _cell(frame: _Frame, c: tuple[float, float, float, float]) -> BBox:
 
 
 def _read(page: PdfPage, form: FormProfile, profile: TitleBlockProfile, frame: _Frame, method: str) -> TitleBlock:
-    drop = {_key(x) for x in (*form.labels, *profile.header_labels, "Формат")}
+    drop = {_key(x) for x in (*form.labels, *profile.header_labels, *profile.format_labels)}
     near = _words_in(page.words, (frame.left - pt(2), frame.top - pt(12), frame.right + pt(2), frame.bottom + pt(6)))
     graphs: dict[int, str] = {}
     cells: dict[int, BBox] = {}

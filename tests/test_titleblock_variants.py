@@ -3,6 +3,8 @@
 Реальные документы в репозиторий не кладём — здесь их геометрия, воспроизведённая рисованием:
 двойные рамки ячеек из Word, шапка ЕСКД без «Кол.уч», шапка верхней строкой без линии над ней,
 обозначение «-ОВ» в одной ячейке с заказчиком, таблица вплотную над основной надписью, штамп в середине листа.
+Пакеты казахстанские — разбор идёт в контексте юрисдикции kz. Последний лист — корпоративная шапка «Рев.»
+вместо «Изм.»: её подключает слой организации, без правки кода.
 """
 
 import pytest
@@ -11,7 +13,10 @@ from zerocycle.bench.draw import FONT, new_canvas
 from zerocycle.extract.designation import parse
 from zerocycle.extract.titleblock import _designation_in, find_title_block
 from zerocycle.ingest.pdf import read_pdf
+from zerocycle.packs import context
 from zerocycle.units import normalize_format, pt
+
+KZ = context("kz")
 
 
 class Pen:
@@ -63,7 +68,7 @@ def _header(pen, xs, y, labels):
 
 
 @pytest.fixture(scope="module")
-def pages(tmp_path_factory):
+def sheets(tmp_path_factory):
     path = tmp_path_factory.mktemp("variants") / "variants.pdf"
     c = new_canvas(path, "variants", "test")
 
@@ -166,8 +171,37 @@ def pages(tmp_path_factory):
     pen.text(545, 318.5, "5", 7)
     pen.text(512, 326, 'НАО "Turar Healthcare"', 6)
     c.showPage()
+
+    # 6. корпоративная шапка: «Рев.» вместо «Изм.»; штамп не у угла рамки — найти его можно только по шапке
+    pen = Pen(c, 420, 297)
+    pen.rect(20, 5, 415, 292)
+    left = 150
+    xs, _ = _grid(pen, left, 200, [10, 10, 10, 10, 15, 10], [5] * 8)
+    _header(pen, xs, 214, ["Рев.", "Кол.уч", "Лист", "№док.", "Подп.", "Дата"])
+    R = left + 65
+    for y in (200, 210, 220, 225, 240):
+        pen.line(R, y, 335, y)
+    pen.line(R, 200, R, 240)
+    pen.line(285, 220, 285, 240)
+    for x in (300, 315):
+        pen.line(x, 220, x, 230)
+    pen.line(285, 230, 335, 230)
+    pen.text(R + 5, 207, "2024-08-ОПЗ", 10)
+    pen.text(286, 224, "Стадия", 6)
+    pen.text(301, 224, "Лист", 6)
+    pen.text(316, 224, "Листов", 6)
+    pen.text(289, 228.5, "РП", 7)
+    pen.text(305, 228.5, "1", 7)
+    pen.text(320, 228.5, "9", 7)
+    pen.text(287, 236, 'ТОО "Проект-Астана"', 6)
+    c.showPage()
     c.save()
-    return [find_title_block(p) for p in read_pdf(path)]
+    return read_pdf(path)
+
+
+@pytest.fixture(scope="module")
+def pages(sheets):
+    return [find_title_block(p, KZ) for p in sheets]
 
 
 def test_word_double_borders(pages):
@@ -180,13 +214,13 @@ def test_header_on_top_without_line(pages):
     tb = pages[1]
     assert tb is not None and tb.form == 6
     assert tb.get(1) == "39-2024 ОВ.СО" and tb.get(7) == "2"
-    assert parse(tb.get(1)).text == "39-2024-ОВ.СО"
+    assert parse(tb.get(1), KZ.codebook).text == "39-2024-ОВ.СО"
 
 
 def test_eskd_header_without_kol_uch(pages):
     tb = pages[2]
     assert tb is not None and (tb.get(1), tb.get(7)) == ("ПОС", "2")
-    assert "нет базового обозначения" in parse(tb.get(1)).issues
+    assert "нет базового обозначения" in parse(tb.get(1), KZ.codebook).issues
 
 
 def test_designation_inside_customer_cell_and_table_above(pages):
@@ -213,12 +247,34 @@ def test_block_in_the_middle_of_page(pages):
         ("Заказ: - ОВ.СО", "-ОВ.СО"),
         ("№2023-17 АР", "№2023-17 АР"),
         ("311-2026 -ПЗ", "311-2026 -ПЗ"),
+        ("311-2026-ОПЗ", "311-2026-ОПЗ"),
+        ("2023-17-СС", "2023-17-СС"),
         ("Альбом АР", None),
         ("Отопление и вентиляция ОВ", None),
     ],
 )
 def test_designation_in_cell(text, expected):
-    assert _designation_in(text) == expected
+    assert _designation_in(text, KZ.codebook) == expected
+
+
+@pytest.mark.parametrize("text", ["311-2026-ОПЗ", "2023-17-СС", "311-2026-СД"])
+def test_kz_codes_unknown_to_ru(text):
+    """Шифры РК есть только в справочнике kz: с российским справочником графа 1 их не узнаёт."""
+    assert _designation_in(text, context("ru").codebook) is None
+
+
+def test_corporate_header_needs_organization_layer(sheets, tmp_path):
+    page = sheets[5]
+    assert find_title_block(page, KZ) is None
+    org = tmp_path / "proekt-astana.toml"
+    org.write_text(
+        'name = "ТОО «Проект-Астана»"\n\n[spds.header.roles]\n14 = ["изм*", "рев*"]\n',
+        encoding="utf-8",
+    )
+    tb = find_title_block(page, context("kz", org))
+    assert tb is not None and tb.method == "grid"
+    assert (tb.get(1), tb.get(6), tb.get(7), tb.get(8)) == ("2024-08-ОПЗ", "РП", "1", "9")
+    assert tb.get(9).startswith("ТОО")
 
 
 def test_format_written_with_cad_fonts():

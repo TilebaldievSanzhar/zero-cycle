@@ -31,6 +31,7 @@ uv sync                                                   # Python 3.13, зав�
 uv run pytest                                             # тесты
 uv run python -m zerocycle gen var/corpus --seed 1 --count 3   # засеянные пакеты: package/ и эталон рядом
 uv run python -m zerocycle scan var/corpus/seed-0001/package   # опись: листы, основные надписи, обозначения, info.xml
+uv run python -m zerocycle scan var/real/goszakup_kz/17778737 -j kz   # реальный пакет РК: шифры РК, ГОСТ 21.101-97
 uv run python -m zerocycle designation 2345-ИОС4.1.2-С 2345-AP # разбор обозначений
 uv run python -m zerocycle remarks var/real/goszakup_kz --labels docs/bench/data/remarks_kz_labels.tsv  # замечания, H1
 ```
@@ -56,7 +57,7 @@ uv run python -m zerocycle remarks var/real/goszakup_kz --labels docs/bench/data
 | `src/zerocycle/ingest/` | файлы пакета (папка или zip с защитой), PDF, info.xml |
 | `src/zerocycle/extract/` | обозначения, основные надписи |
 | `src/zerocycle/scan.py` | опись пакета |
-| `src/zerocycle/packs/` | данные пакетов: `spds` — профиль основных надписей, `ru` — разделы ПП 87, шифры и марки; правила — с шага 0.5 |
+| `src/zerocycle/packs/` | данные пакетов и контекст `context(юрисдикция, организация)`: `spds` — основные надписи, марки и хвосты обозначений по редакциям (2020, 97), `ru` — разделы ПП 87, `kz` — шифры РК; слой организации — TOML поверх (`--org`); правила — с шага 0.5 |
 | `src/zerocycle/bench/` | генератор засеянных пакетов и каталог дефектов; руки сравнения и метрики — шаг 0.12 |
 | `src/zerocycle/remarks/` | заключения экспертизы РК → пункты «Дополнений и изменений», кодбук категорий, замер H1 |
 | `docs/bench/data/` | разметка пунктов замечаний и перечень заключений, вошедших в замер |

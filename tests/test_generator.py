@@ -6,6 +6,7 @@ import json
 import pytest
 
 from zerocycle.bench.corpus import generate
+from zerocycle.packs import context
 from zerocycle.scan import scan
 
 CODES = ["D03", "F02", "F03", "F08", "D09", "F09", "F06", "F07", "D07"]
@@ -16,7 +17,10 @@ def corpus(tmp_path_factory):
     root = tmp_path_factory.mktemp("corpus")
     dirty = generate(13, root, codes=CODES)
     clean = generate(14, root, mode="clean")
-    return {"dirty": (dirty, scan(dirty / "package")), "clean": (clean, scan(clean / "package"))}
+    return {
+        "dirty": (dirty, scan(dirty / "package", context("ru"))),
+        "clean": (clean, scan(clean / "package", context("ru"))),
+    }
 
 
 def _gt(out):
