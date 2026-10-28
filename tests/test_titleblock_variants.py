@@ -14,7 +14,7 @@ from zerocycle.extract.designation import parse
 from zerocycle.extract.titleblock import _designation_in, find_title_block
 from zerocycle.ingest.pdf import read_pdf
 from zerocycle.packs import context
-from zerocycle.units import normalize_format, pt
+from zerocycle.units import mm, normalize_format, pt
 
 KZ = context("kz")
 
@@ -195,6 +195,41 @@ def sheets(tmp_path_factory):
     pen.text(320, 228.5, "9", 7)
     pen.text(287, 236, 'ТОО "Проект-Астана"', 6)
     c.showPage()
+
+    # 7. под основной надписью «Копировал» и формат, как в шаблонах ЕСКД и ГОСТ 21.101-97
+    pen = Pen(c, 420, 297)
+    pen.rect(20, 5, 415, 292)
+    xs, _ = _grid(pen, left, 200, [10, 10, 10, 10, 15, 10], [5] * 8)
+    _header(pen, xs, 214, ["Изм.", "Кол.уч", "Лист", "№док.", "Подп.", "Дата"])
+    for y in (200, 210, 220, 225, 240):
+        pen.line(R, y, 335, y)
+    pen.line(R, 200, R, 240)
+    pen.line(285, 220, 285, 240)
+    for x in (300, 315):
+        pen.line(x, 220, x, 230)
+    pen.line(285, 230, 335, 230)
+    pen.text(R + 5, 207, "2024-08-ВК", 10)
+    pen.text(286, 224, "Стадия", 6)
+    pen.text(301, 224, "Лист", 6)
+    pen.text(316, 224, "Листов", 6)
+    pen.text(289, 228.5, "РП", 7)
+    pen.text(305, 228.5, "1", 7)
+    pen.text(320, 228.5, "4", 7)
+    pen.text(R + 5, 244, "Копировал Иванов", 6)
+    pen.text(300, 244, "Формат А3", 6)
+    c.showPage()
+
+    # 8. лист типового проекта без текста: поля рамки 10 и 15 мм (ГОСТ 21.101-97, прил. Е), штамп только линиями
+    pen = Pen(c, 420, 297)
+    pen.rect(20, 10, 415, 282)
+    _grid(pen, 230, 227, [10, 10, 10, 10, 15, 10], [5] * 11)
+    pen.line(230, 227, 415, 227)
+    for y in (237, 252, 257, 267):
+        pen.line(295, y, 415, y)
+    pen.line(365, 252, 365, 282)
+    for x in (380, 395):
+        pen.line(x, 252, x, 267)
+    c.showPage()
     c.save()
     return read_pdf(path)
 
@@ -275,6 +310,34 @@ def test_corporate_header_needs_organization_layer(sheets, tmp_path):
     assert tb is not None and tb.method == "grid"
     assert (tb.get(1), tb.get(6), tb.get(7), tb.get(8)) == ("2024-08-ОПЗ", "РП", "1", "9")
     assert tb.get(9).startswith("ТОО")
+
+
+def test_below_block_by_edition(sheets):
+    """Под основной надписью «Копировал» и формат: графа 26 — «Копировал» в ГОСТ 21.101-97, формат — в 2020."""
+    page = sheets[6]
+    kz = find_title_block(page, KZ)
+    assert (kz.get(1), kz.get(26), kz.format_text) == ("2024-08-ВК", "Иванов", "А3")
+    ru = find_title_block(page, context("ru"))
+    assert (ru.get(26), ru.format_text) == ("А3", "А3")
+
+
+def test_no_customer_graph_in_97(sheets):
+    """Графы 27 в ГОСТ 21.101-97 нет: таблица над штампом не читается как заказчик."""
+    assert all(27 not in tb.graphs for tb in (find_title_block(p, KZ) for p in sheets) if tb)
+
+
+def test_typical_project_frame(sheets):
+    """Лист типового проекта без текста: поля рамки 10 и 15 мм (ГОСТ 21.101-97, прил. Е).
+
+    Профиль 97 ставит основную надпись в угол рамки (низ — 282 мм); профиль 2020 ждёт поле 5 мм и находит её
+    на 10 мм ниже — за нижней линией рамки, со сдвинутыми ячейками.
+    """
+    page = sheets[7]
+    tb = find_title_block(page, KZ)
+    assert tb is not None and (tb.method, tb.form) == ("frame", 3)
+    assert abs(mm(tb.bbox[3]) - 282) < 1 and abs(mm(tb.bbox[1]) - 227) < 1
+    ru = find_title_block(page, context("ru"))
+    assert ru is None or abs(mm(ru.bbox[3]) - 282) > 5
 
 
 def test_format_written_with_cad_fonts():

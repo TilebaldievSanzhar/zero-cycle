@@ -58,6 +58,9 @@ class Designation(BaseModel):
     doc_number: int | None = None  # ЭО.1 → 1: номер документа через точку сразу после шифра
     tail: str | None = None  # хвост по стандарту организации: «АР.ГЧ» → «ГЧ»
     suffix: Literal["С", "СП"] | None = None  # «С» — содержание тома, «СП» — состав ПД
+    # как приписан суффикс: «-» — 2345-ПЗУ2-С (ГОСТ Р 21.101-2020);
+    # «.» — 2345-ГТ.С и «» — 2345-11-КЖ.ИС (ГОСТ 21.101-97)
+    suffix_sep: Literal["-", ".", ""] = "-"
     issues: tuple[str, ...] = ()  # что не так с записью: латиница в шифре, неизвестный шифр…
 
     @property
@@ -74,8 +77,8 @@ class Designation(BaseModel):
 
     @property
     def text(self) -> str:
-        """Нормализованная запись целиком: «2345-ПЗУ2-С», «2345-СП»."""
-        return f"{self.core}-{self.suffix}" if self.suffix else self.core
+        """Нормализованная запись целиком: «2345-ПЗУ2-С», «2345-ГТ.С», «2345-СП»."""
+        return f"{self.core}{self.suffix_sep}{self.suffix}" if self.suffix else self.core
 
 
 class SectionRef(BaseModel):
@@ -109,11 +112,15 @@ class ChangeRow(BaseModel):
 
 
 class TitleBlock(BaseModel):
-    """Основная надпись листа по ГОСТ Р 21.101-2020, прил. Ж."""
+    """Основная надпись листа: формы 3–6 по ГОСТ Р 21.101-2020 (прил. Ж) или ГОСТ 21.101-97 (прил. Д).
+
+    Номера граф — по редакции из контекста пакета: графа 26 — формат в 2020 и «Копировал» в 97, графы 27 в 97 нет.
+    """
 
     form: int  # 3–6
     bbox: BBox  # рамка основной надписи на странице
     graphs: dict[int, str] = Field(default_factory=dict)  # графа → текст (1–9, 23–27)
+    format_text: str | None = None  # запись формата под основной надписью («А3») — в любой редакции
     cells: dict[int, BBox] = Field(default_factory=dict)  # графа → рамка ячейки — для якорей
     signatures: list[SignRow] = Field(default_factory=list)
     changes: list[ChangeRow] = Field(default_factory=list)

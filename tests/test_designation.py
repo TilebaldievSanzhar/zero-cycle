@@ -6,6 +6,7 @@ from zerocycle.extract.designation import belongs_to, interpret, parse
 from zerocycle.packs import codebook
 
 RU = codebook("ru")
+KZ = codebook("kz")  # редакция СПДС — ГОСТ 21.101-97
 
 
 @pytest.mark.parametrize(
@@ -109,3 +110,22 @@ def test_belongs_to():
     assert belongs_to(parse("2345-АР.ГЧ", RU), parse("2345-АР", RU))
     assert not belongs_to(parse("2345-ИОС4.2", RU), parse("2345-ИОС4.1", RU))
     assert not belongs_to(parse("2346-АР", RU), parse("2345-АР", RU))
+
+
+@pytest.mark.parametrize(
+    ("raw", "code", "tail", "sep"),
+    [("2345-ГТ.С", "ГТ", None, "."), ("2345-11-КЖ.ИС", "КЖ", "И", ""), ("2345-11-ТХ.НС", "ТХ", "Н", "")],
+)
+def test_contents_by_gost_97(raw, code, tail, sep):
+    """ГОСТ 21.101-97, п. 9.4: содержание — обозначение документа и «С»; примеры стандарта."""
+    d = parse(raw, KZ)
+    assert (d.code, d.tail, d.suffix, d.suffix_sep) == (code, tail, "С", sep)
+    assert d.text == raw
+
+
+def test_contents_forms_by_edition():
+    """В редакции 2020 «.С» — хвост, а не содержание; дефисная запись содержания понятна и в редакции 97."""
+    d = parse("2345-ГТ.С", RU)
+    assert (d.tail, d.suffix) == ("С", None)
+    d = parse("2345-ПЗУ2-С", KZ)
+    assert (d.code, d.numbers, d.suffix, d.suffix_sep) == ("ПЗУ", (2,), "С", "-")

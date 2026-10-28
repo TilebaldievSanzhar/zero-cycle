@@ -10,7 +10,7 @@ def test_jurisdictions_and_editions():
     assert {"kz", "ru"} <= set(available()) and not {"spds", "core"} & set(available())
     ru, kz = context("ru"), context("kz")
     assert (ru.edition, ru.standard, ru.titleblocks.verified) == ("2020", "ГОСТ Р 21.101-2020", True)
-    assert (kz.edition, kz.standard, kz.titleblocks.verified) == ("97", "ГОСТ 21.101-97", False)
+    assert (kz.edition, kz.standard, kz.titleblocks.verified) == ("97", "ГОСТ 21.101-97", True)
     assert ru.chain == ("core", "spds", "ru") and kz.chain == ("core", "spds", "kz")
 
 
@@ -19,12 +19,44 @@ def test_unknown_jurisdiction():
         context("uz")
 
 
-def test_edition_97_inherits_2020_until_verified():
-    """Текста ГОСТ 21.101-97 в bim-data нет: формы и подписи граф унаследованы от редакции 2020."""
+def test_edition_97_same_geometry_as_2020():
+    """ГОСТ 21.101-97, прил. Д и Е: формы 3–6, подписи граф и поля рамки — как в 2020; нет только графы 27."""
     p97, p2020 = titleblock_profile("97"), titleblock_profile("2020")
-    assert p97.forms == p2020.forms
-    assert p97.header_roles == p2020.header_roles
-    assert context("kz").codebook.marks == context("ru").codebook.marks
+    for n, f in p2020.forms.items():
+        assert {g: c for g, c in f.graphs.items() if g != 27} == p97.forms[n].graphs
+        assert (f.height, f.header, f.changes, f.signatures, f.labels) == (
+            p97.forms[n].height,
+            p97.forms[n].header,
+            p97.forms[n].changes,
+            p97.forms[n].signatures,
+            p97.forms[n].labels,
+        )
+    assert p97.header_roles == p2020.header_roles and p97.label_graphs == p2020.label_graphs
+    assert p97.frame == p2020.frame
+    assert p97.customer_row == 0 and p2020.customer_row == 10
+
+
+def test_edition_97_differences():
+    p97, p2020 = titleblock_profile("97"), titleblock_profile("2020")
+    # графа 26: формат в 2020, «Копировал» в 97 — формат там графой не нумеруется
+    assert (p2020.format_graph, p2020.copier_graph) == (26, None)
+    assert (p97.format_graph, p97.copier_graph, p97.copier_labels) == (None, 26, ("Копировал",))
+    # рамка типовой проектной документации: сверху 10, снизу 15 мм (прил. Е)
+    assert p2020.frames == (p2020.frame,)
+    assert p97.frames[1] == {**p97.frame, "top": 10.0, "bottom": 15.0}
+    # стадии в графе 6 и предел листов в томе
+    assert set(p2020.stages) == {"П", "Р", "И"} and set(p97.stages) == {"П", "Р"}
+    assert p2020.max_sheets == {"A4": 300}
+    assert p97.max_sheets == {"A4": 250, "A3": 150, "A2": 75, "A1": 50}
+
+
+def test_edition_97_marks():
+    """Прил. А ГОСТ 21.101-97: есть ГТ и СС, нет ЭОМ, ГГ, КМ, КДД, ЭВ, ЭК; ЭОМ и КМ — практика РК (sections.toml)."""
+    kz, ru = context("kz").codebook, context("ru").codebook
+    assert {"ГТ", "СС"} <= set(kz.marks) and not {"ГТ", "СС"} & set(ru.marks)
+    assert not {"ЭОМ", "ГГ", "КМ", "КДД", "ЭВ", "ЭК"} & set(kz.marks)
+    assert {"ЭОМ", "КМ"} <= kz.all_codes  # шифры из пакетов и заключений РК
+    assert len(kz.marks) == 39  # 40 строк таблицы А.1 без «Автоматизация …»
 
 
 def test_geometry_derived_from_profile():
@@ -58,6 +90,7 @@ def test_org_forms_by_jurisdiction():
 def test_merge_tables_and_replace_lists():
     base = {"a": {"x": 1, "y": [1, 2]}, "b": 2}
     assert merge(base, {"a": {"y": [3]}, "c": 4}) == {"a": {"x": 1, "y": [3]}, "b": 2, "c": 4}
+    assert merge(base, {"a": {"x": False}, "b": False}) == {"a": {"y": [1, 2]}}  # false убирает унаследованное
     assert base == {"a": {"x": 1, "y": [1, 2]}, "b": 2}  # родитель не меняется
 
 

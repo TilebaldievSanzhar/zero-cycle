@@ -31,7 +31,7 @@ from zerocycle.extract.designation import parse
 from zerocycle.ingest.pdf import PdfPage, Segment, Word
 from zerocycle.model import BBox, ChangeRow, SignRow, TitleBlock
 from zerocycle.packs import Codebook, Context, FormProfile, TitleBlockProfile
-from zerocycle.units import pt
+from zerocycle.units import normalize_format, pt
 
 TOL_MM = 3.0  # допуск положения рамки и линий
 MIN_COLUMNS = 4  # сколько границ колонок таблицы изменений должно найтись, чтобы поверить рамке
@@ -258,18 +258,18 @@ def _by_grid(page: PdfPage, ctx: Context) -> TitleBlock | None:
         cells.setdefault(tuple(round(v) for v in box), _Cell(box)).words.append(w)
     tb = _assign(list(cells.values()), xm, top, xr, bottom, ctx)
 
-    # графа 27 — строка над основной надписью, если её верх отчерчен линией; 26 — под основной надписью
-    row27 = pt(profile.customer_row) * scale
-    lined = any(abs(s.top - (top - row27)) <= pt(2) and s.x1 > xm and s.x0 < xr for s in page.hsegs) and any(
-        abs(s.x0 - xm) <= pt(2) and s.top <= top - row27 + pt(2) and s.bottom >= top - pt(2) for s in page.vsegs
-    )
-    above_words = _words_in(page.words, (xm, top - row27, xr, top - 0.5))
-    if lined and above_words and (text := _join(above_words)) and ctx.org.search(text):  # 27 — наименование заказчика
-        tb.graphs[27] = text
+    # графа 27 — строка над основной надписью, если её верх отчерчен линией и графа 27 в редакции есть;
+    # под основной надписью — запись формата и «Копировал»
+    if profile.customer_row:
+        row27 = pt(profile.customer_row) * scale
+        lined = any(abs(s.top - (top - row27)) <= pt(2) and s.x1 > xm and s.x0 < xr for s in page.hsegs) and any(
+            abs(s.x0 - xm) <= pt(2) and s.top <= top - row27 + pt(2) and s.bottom >= top - pt(2) for s in page.vsegs
+        )
+        above_words = _words_in(page.words, (xm, top - row27, xr, top - 0.5))
+        if lined and above_words and (text := _join(above_words)) and ctx.org.search(text):  # наименование заказчика
+            tb.graphs[27] = text
     below_words = _words_in(page.words, (xm, bottom + 0.5, xr, bottom + pt(8) * scale))
-    fmt = re.split("|".join(map(re.escape, profile.format_labels)), _join(below_words), maxsplit=1)
-    if len(fmt) == 2 and (value := fmt[1].strip()):
-        tb.graphs[26] = value.split()[0]
+    _put_below(tb, _join(below_words), profile)
 
     # левая часть: подписи под шапкой, изменения над ней
     change_cols = _column_roles(head, cols, roles)
@@ -298,6 +298,39 @@ def _by_grid(page: PdfPage, ctx: Context) -> TitleBlock | None:
     tb.scale = round(scale, 2)
     tb.confidence = round((0.9 if spans else 0.7) - (0.2 if not tb.get(1) else 0.0), 2)
     return tb
+
+
+def _below(text: str, profile: TitleBlockProfile) -> tuple[bool, dict[str, str]]:
+    """Подписи под основной надписью → (нашлась ли подпись, значения после подписей).
+
+    «Копировал Иванов Формат А3» → {"copier": "Иванов", "format": "А3"}: значение — до следующей подписи,
+    у формата — первое слово.
+    """
+    marks = sorted(
+        (m.start(), m.end(), kind)
+        for kind, labels in (("format", profile.format_labels), ("copier", profile.copier_labels))
+        for label in labels
+        for m in re.finditer(re.escape(label), text)
+    )
+    values: dict[str, str] = {}
+    for i, (_start, end, kind) in enumerate(marks):
+        stop = marks[i + 1][0] if i + 1 < len(marks) else len(text)
+        if (value := text[end:stop].strip()) and kind not in values:
+            values[kind] = value.split()[0] if kind == "format" else value
+    return bool(marks), values
+
+
+def _put_below(tb: TitleBlock, text: str, profile: TitleBlockProfile) -> bool:
+    """Значения из-под основной надписи — по смыслу граф редакции: формат — графа 26 в ГОСТ Р 21.101-2020,
+    «Копировал» — графа 26 в ГОСТ 21.101-97. False — подписей в тексте нет."""
+    found, values = _below(text, profile)
+    if fmt := values.get("format"):
+        tb.format_text = fmt
+        if profile.format_graph:
+            tb.graphs[profile.format_graph] = fmt
+    if (copier := values.get("copier")) and profile.copier_graph:
+        tb.graphs[profile.copier_graph] = copier
+    return found
 
 
 def _enclosing(w: Word, vsegs: list[Segment], hsegs: list[Segment], area: BBox) -> BBox:
@@ -479,18 +512,30 @@ def _assign(cells: list[_Cell], xm: float, top: float, xr: float, bottom: float,
 
 
 def _corner(page: PdfPage, profile: TitleBlockProfile) -> tuple[float, float]:
-    """Правый нижний угол внутренней рамки: ожидаемый по полям, уточнённый по линиям рядом."""
-    right = page.width - pt(profile.frame["right"])
-    bottom = page.height - pt(profile.frame["bottom"])
+    """Правый нижний угол внутренней рамки: ожидаемый по полям, уточнённый по линиям рядом.
+
+    Полей бывает двое — обычные и рамки типовой проектной документации (ГОСТ 21.101-97, прил. Е: снизу 15 мм
+    вместо 5): берём те, у которых нашлась нижняя линия рамки, иначе — правая, иначе — обычные.
+    """
     tol = pt(TOL_MM)
-    vs = [
-        s.x0 for s in page.vsegs if abs(s.x0 - right) <= tol and s.bottom >= bottom - tol and s.bottom - s.top >= pt(10)
-    ]
-    hs = [s.top for s in page.hsegs if abs(s.top - bottom) <= tol and s.x1 >= right - tol and s.x1 - s.x0 >= pt(50)]
-    if vs:
-        right = min(vs, key=lambda x: abs(x - right))
-    if hs:
-        bottom = min(hs, key=lambda y: abs(y - bottom))
+    found: list[tuple[bool, bool, float, float]] = []
+    for frame in profile.frames:
+        right = page.width - pt(frame["right"])
+        bottom = page.height - pt(frame["bottom"])
+        vs = [
+            s.x0
+            for s in page.vsegs
+            if abs(s.x0 - right) <= tol and s.bottom >= bottom - tol and s.bottom - s.top >= pt(10)
+        ]
+        hs = [s.top for s in page.hsegs if abs(s.top - bottom) <= tol and s.x1 >= right - tol and s.x1 - s.x0 >= pt(50)]
+        if vs:
+            right = min(vs, key=lambda x: abs(x - right))
+        if hs:
+            bottom = min(hs, key=lambda y: abs(y - bottom))
+        found.append((bool(hs), bool(vs), right, bottom))
+    by_bottom = next((c for c in found if c[0]), None)
+    by_right = next((c for c in found if c[1]), None)
+    _h, _v, right, bottom = by_bottom or by_right or found[0]
     return right, bottom
 
 
@@ -567,14 +612,17 @@ def _cell(frame: _Frame, c: tuple[float, float, float, float]) -> BBox:
 
 
 def _read(page: PdfPage, form: FormProfile, profile: TitleBlockProfile, frame: _Frame, method: str) -> TitleBlock:
-    drop = {_key(x) for x in (*form.labels, *profile.header_labels, *profile.format_labels)}
+    drop = {_key(x) for x in (*form.labels, *profile.header_labels, *profile.format_labels, *profile.copier_labels)}
     near = _words_in(page.words, (frame.left - pt(2), frame.top - pt(12), frame.right + pt(2), frame.bottom + pt(6)))
+    below = profile.format_graph or profile.copier_graph  # ячейка под основной надписью: графа 26
     graphs: dict[int, str] = {}
     cells: dict[int, BBox] = {}
     for g, c in form.graphs.items():
         box = _cell(frame, c)
-        text = _join(_words_in(near, box), drop)
         cells[g] = box
+        if g == below:
+            continue
+        text = _join(_words_in(near, box), drop)
         if text:
             graphs[g] = text
 
@@ -606,7 +654,7 @@ def _read(page: PdfPage, form: FormProfile, profile: TitleBlockProfile, frame: _
     confidence = 0.95 if method == "frame" else 0.75
     if not graphs.get(1):
         confidence -= 0.2
-    return TitleBlock(
+    tb = TitleBlock(
         form=form.form,
         bbox=(frame.left, frame.top, frame.right, frame.bottom),
         graphs=graphs,
@@ -616,3 +664,12 @@ def _read(page: PdfPage, form: FormProfile, profile: TitleBlockProfile, frame: _
         method=method,
         confidence=round(confidence, 2),
     )
+    if below in cells:
+        words = _words_in(near, cells[below])
+        if not _put_below(tb, _join(words), profile) and (value := _join(words, drop)):
+            # значение без подписи: похоже на формат — запись формата, иначе — графа ячейки
+            if normalize_format(value):
+                tb.format_text = value
+            if profile.format_graph or not normalize_format(value):
+                tb.graphs[below] = value
+    return tb
