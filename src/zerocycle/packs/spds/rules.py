@@ -707,7 +707,7 @@ def _composition_case(listed: list[str], present: list[str]):
 
 @rule(
     "spds.composition.volumes",
-    version="0.2.0",
+    version="0.3.0",
     title="«Состав проектной документации» и тома пакета совпадают",
     family=Family.completeness,
     kind="consistency",
@@ -747,6 +747,11 @@ def _composition_case(listed: list[str], present: list[str]):
         Fixture(
             "«не разрабатывается» — тома и нет",
             _composition_case(["ПЗ", "АР", "ИОС6|Не разрабатывается"], ["ПЗ", "АР"]),
+            {Status.violated: 0, Status.ok: 1},
+        ),
+        Fixture(
+            "«Не / разрабатывается» перенесено в узкой колонке примечания",
+            _composition_case(["ПЗ", "АР", "ИОС6|Не\nразрабатывается"], ["ПЗ", "АР"]),
             {Status.violated: 0, Status.ok: 1},
         ),
         Fixture(

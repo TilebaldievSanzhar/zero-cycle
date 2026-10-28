@@ -32,10 +32,12 @@ _WORK = (
 )
 
 
-BEFORE_CHARS = 60  # сколько текста перед ссылкой помнить: «Актуализированная редакция СНиП …» — не ссылка
+BEFORE_CHARS = 200  # сколько текста перед ссылкой помнить: наименование СП до вложенного СНиП — до 90 знаков
 # упоминание, а не ссылка: заменённый документ в наименовании действующего СП, «взамен …», «вместо …»
 _MENTION = re.compile(r"(?:актуализированн\w*\s+редакци\w*|взамен|вместо|заменя\w*|замен[её]н\w*)\W*$", re.IGNORECASE)
 _NOT_DEVELOPED = re.compile(r"не\s+разрабатыва|не\s+требуется|не\s+выполня", re.IGNORECASE)
+_TITLE_WORD = re.compile(r"[А-Яа-яЁёA-Za-z]{3,}")
+_LIST_END = re.compile(r"(?:[,;]|\b(?:и|или|также))\s*$", re.IGNORECASE)  # «СП … и СНиП …» — перечень ссылок
 
 
 @dataclass
@@ -48,6 +50,28 @@ class NormRefHit:
     def mention(self) -> bool:
         return bool(_MENTION.search(" ".join(self.before.split())))
 
+    def in_title_of(self, kind: str, number: str) -> bool:
+        """Ссылка внутри наименования документа `code` — так реестр пишет наименования сводов правил:
+        - «СП 48.13330.2019 «Организация строительства СНиП 12-01-2004»» — кавычка наименования открыта и не закрыта;
+        - «15 СП 59.13330.2020 Доступность зданий … населения. СНиП 35-01-2001» — в той же строке таблицы между
+          обозначением и СНиП стоит наименование, а не «и» или запятая; перенос наименования — тоже строка таблицы.
+
+        «СП 59.13330.2020 и СНиП 35-01-2001», «16 СНиП 35-01-2001» отдельной строкой — две ссылки. Документ — по номеру
+        без года: СНиП в наименовании и прежней редакции («СП 30.13330.2016 … СНиП 2.04.01-85*») — не ссылка.
+        """
+        ends = [b for d, _, b in find_designations(self.before) if d.key == (kind, number)]
+        if not ends:
+            return False
+        tail = self.before[ends[-1] :]
+        if tail.count("«") > tail.count("»") or tail.count("“") > tail.count("”") or tail.count('"') % 2 == 1:
+            return True
+        if len(_TITLE_WORD.findall(tail)) < 2 or _LIST_END.search(tail):
+            return False
+        if "\n" not in tail:
+            return True
+        last = tail.rsplit("\n", 1)[-1]
+        return bool(last.strip()) and not re.match(r"\s*\d", last)
+
 
 @dataclass
 class Listed:
@@ -56,11 +80,12 @@ class Listed:
     designation: Designation
     anchor: Anchor
     line: str
+    row: str = ""  # строка ведомости целиком: перенос наименования и примечания («Не» / «разрабатывается»)
 
     @property
     def not_developed(self) -> bool:
         """«Раздел 12 … — Не разрабатывается»: раздел записан, но сознательно не выполняется."""
-        return bool(_NOT_DEVELOPED.search(self.line))
+        return bool(_NOT_DEVELOPED.search(" ".join((self.row or self.line).split())))
 
 
 # «Состав проектной документации» (ГОСТ Р 21.101-2020, 8.1.6), «Состав проекта», «Состав рабочего проекта» (РК)
@@ -215,15 +240,23 @@ class Context:
             for page in self.pages_of(d).values():
                 if d.path not in own and not _COMPOSITION.search(page.title):
                     continue
+                current: Listed | None = None  # строка ведомости, к которой идут перенесённые строки текста
                 for line in (s.strip() for s in page.text.splitlines()):
+                    entry = None
                     for token in line.split()[:3]:
                         des = parse(token.strip('«»"(),;:'), cb)
-                        if des is None or des.suffix or des.code is None or not re.search(r"\d", des.base):
-                            continue
-                        if des.core not in seen:
-                            seen.add(des.core)
-                            out.append(Listed(des, self.anchor(d, page.number, quote=line), line))
-                        break
+                        if des is not None and not des.suffix and des.code and re.search(r"\d", des.base):
+                            entry = des
+                            break
+                    if entry is None:
+                        if current is not None and line:
+                            current.row += "\n" + line
+                        continue
+                    current = None
+                    if entry.core not in seen:
+                        seen.add(entry.core)
+                        current = Listed(entry, self.anchor(d, page.number, quote=line), line, line)
+                        out.append(current)
         return out
 
     def _load(self, doc: Document) -> None:

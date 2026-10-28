@@ -85,8 +85,22 @@ class PackageResult:
     at_notes: dict[int, list[str]] = field(default_factory=dict)  # номер места → статусы находок на нём
 
 
+# какие правила отвечают за отвлекающее место эталона; виды не из списка — любое правило (лист боком, приложение без
+# штампа, том субподрядчика — «нарушено» любого правила на нём ложное)
+NOTE_RULES: dict[str, tuple[str, ...]] = {
+    "snip_in_title": ("ru.norms.registry", "kz.norms.agsk1"),
+    "tep_distractor": ("ru.tep.consistent",),
+    "not_developed": ("spds.composition.volumes", "ru.completeness.pp87"),
+    "scaled_print": ("spds.sheets.format",),
+    "fit_print": ("spds.sheets.format",),
+}
+
+
 def at_note(note: dict, f: Finding) -> bool:
     """Находка на отвлекающем месте эталона: тот же раздел, обозначение или файл и лист (page = null — весь файл)."""
+    rules = NOTE_RULES.get(note.get("kind", ""))
+    if rules and f.rule not in rules:
+        return False
     if note.get("section") is not None and f.values.get("section") == note["section"]:
         return True
     if note.get("designation") and f.values.get("designation") == note["designation"]:
@@ -117,6 +131,7 @@ def evaluate(name: str, truth: dict, findings: list[Finding]) -> PackageResult:
             continue
         if any((a.file, a.page) in places for a in f.anchors):
             res.related.append(f)
+            used.add(k)  # следствие засеянного дефекта — и на отвлекающем месте его не считаем
         else:
             res.false_alarms.append(f)
     res.notes = truth.get("notes", [])

@@ -328,7 +328,7 @@ def _norm_case(*texts: str):
 
 @rule(
     "kz.norms.agsk1",
-    version="0.2.0",
+    version="0.3.0",
     title="Ссылки на нормы — на действующие редакции по АГСК-1",
     family=Family.norms,
     kind="reference",
@@ -370,6 +370,11 @@ def norms_agsk1(ctx: Context) -> Iterator[Outcome]:
         if v.status == "not_listed" and (alt := _with_rk(ref)) and index.verdict(alt).status != "not_listed":
             ref, v = alt, index.verdict(alt)  # «СН 2.02-02-2023» в пакете РК — «СН РК 2.02-02-2023» без «РК»
             code = ref.code
+        if v.status in ("outdated_edition", "replaced") and v.current:
+            # в наименовании действующего документа — не ссылка
+            group = [h for h in group if not h.in_title_of(v.current.kind, v.current.number)]
+            if not group:
+                continue
         anchors = tuple(h.anchor for h in group[:MAX_ANCHORS])
         if v.status in ("outdated_edition", "replaced") and v.current:
             cur = v.current

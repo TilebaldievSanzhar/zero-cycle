@@ -353,7 +353,7 @@ def _norm_case(*texts: str, **params):
 
 @rule(
     "ru.norms.registry",
-    version="0.2.0",
+    version="0.3.0",
     title="Ссылки на нормы — на действующие редакции по реестру «Стройкомплекс.РФ»",
     family=Family.norms,
     kind="reference",
@@ -377,9 +377,36 @@ def _norm_case(*texts: str, **params):
             "СНиП в наименовании действующего СП — не ссылка",
             _norm_case(
                 "СП 54.13330.2022 «Здания жилые многоквартирные. Актуализированная редакция СНиП 31-01-2003»; "
-                "СП 1.13130.2020 взамен СП 1.13130.2009"
+                "СП 1.13130.2020 взамен СП 1.13130.2009; "
+                "СП 48.13330.2019 «Организация строительства СНиП 12-01-2004»"
             ),
             {Status.violated: 0, Status.ok: 1},
+        ),
+        Fixture(
+            "СНиП в наименовании без кавычек — строка таблицы норм",
+            _norm_case(
+                "15 СП 59.13330.2020 Доступность зданий и сооружений для маломобильных групп населения. "
+                "СНиП 35-01-2001\n4 СП 30.13330.2020 Внутренний водопровод и канализация\nзданий. СНиП 2.04.01-85*"
+            ),
+            {Status.violated: 0, Status.ok: 1},
+        ),
+        Fixture(
+            "СНиП в наименовании прежней редакции СП — нарушение только у СП",
+            _norm_case("4 СП 30.13330.2016 Внутренний водопровод и канализация зданий. СНиП 2.04.01-85*"),
+            {Status.violated: 1},
+            items={"СП 30.13330.2016": Status.violated},
+        ),
+        Fixture(
+            "СНиП отдельной строкой рядом с его СП — ссылка",
+            _norm_case("13 СП 59.13330.2020\n14 СНиП 35-01-2001"),
+            {Status.violated: 1},
+            items={"СНиП 35-01-2001": Status.violated},
+        ),
+        Fixture(
+            "«СП … и СНиП …» — две ссылки",
+            _norm_case("в соответствии с СП 59.13330.2020 и СНиП 35-01-2001"),
+            {Status.violated: 1},
+            items={"СНиП 35-01-2001": Status.violated},
         ),
         Fixture("актуализированный СНиП", _norm_case("по СНиП 2.04.02-84*"), {Status.violated: 1}),
         Fixture("заменённый стандарт СПДС", _norm_case("оформлено по ГОСТ Р 21.1101-2013"), {Status.violated: 1}),
@@ -420,8 +447,13 @@ def norms_registry(ctx: Context) -> Iterator[Outcome]:
     for code, group in sorted(by_code.items()):
         ref = group[0].designation
         v = index.verdict(ref)
-        anchors = tuple(h.anchor for h in group[:MAX_ANCHORS])
         cur = v.current
+        if v.status in ("outdated_edition", "replaced") and cur:
+            # «СП 48.13330.2019 «Организация строительства СНиП 12-01-2004»» — СНиП в наименовании действующего СП
+            group = [h for h in group if not h.in_title_of(cur.kind, cur.number)]
+            if not group:
+                continue
+        anchors = tuple(h.anchor for h in group[:MAX_ANCHORS])
         if v.status in ("outdated_edition", "replaced") and cur:
             title = f" «{cur.title}»" if cur.title else ""
             values = {
