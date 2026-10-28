@@ -91,3 +91,21 @@ def test_clean_package_has_no_violations(tmp_path):
     seed_dir = generate(11, tmp_path, mode="clean")
     report = check(seed_dir / "package", "ru")
     assert [f.message for f in report.findings if f.status == Status.violated] == []
+
+
+def test_notes_are_places_where_violation_is_false():
+    truth = {
+        "defects": [],
+        "clean": True,
+        "notes": [
+            {"kind": "not_developed", "file": "00 СП/2345-СП.pdf", "page": 1, "expected": "manual", "section": 12},
+            {"kind": "tep_distractor", "file": "05 ИОС/2345-ИОС1.pdf", "page": None, "expected": "ok"},
+        ],
+    }
+    findings = [
+        _finding("ru.completeness.pp87", Status.manual, file="00 СП/2345-СП.pdf", page=1, section=12),
+        _finding("ru.tep.consistent", file="05 ИОС/2345-ИОС1.pdf", page=4),
+    ]
+    res = evaluate("seed", truth, findings)
+    assert res.at_notes == {0: ["manual"], 1: ["violated"]}
+    assert [f.rule for f in res.false_alarms] == ["ru.tep.consistent"]

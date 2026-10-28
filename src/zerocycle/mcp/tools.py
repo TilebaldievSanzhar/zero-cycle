@@ -317,11 +317,14 @@ class Session:
         path = rec.files.get(file)
         if path is None:
             raise ValueError(f"нет файла {file} в пакете прогона {rec.id}")
+        # лист боком без /Rotate опись поворачивает сама (Page.turn, по часовой) — рамки якорей в повёрнутой системе
+        sheet = next((p for d in rec.package.documents if d.path == file for p in d.pages if p.number == page), None)
+        turn = getattr(sheet, "turn", 0) or 0
         pdf = pdfium.PdfDocument(path)
         try:
             if not 1 <= page <= len(pdf):
                 raise ValueError(f"в файле {file} страниц {len(pdf)}, а не {page}")
-            img = pdf[page - 1].render(scale=RENDER_SCALE).to_pil().convert("RGB")
+            img = pdf[page - 1].render(scale=RENDER_SCALE, rotation=turn).to_pil().convert("RGB")
         finally:
             pdf.close()
         crop = (0, 0, img.width, img.height)

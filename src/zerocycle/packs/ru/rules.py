@@ -90,21 +90,30 @@ def _sections(ctx: Context, linear: bool) -> dict[tuple[int, int | None], list[D
     return out
 
 
-def _listed_sections(ctx: Context, linear: bool) -> tuple[set[tuple[int, int | None]], bool]:
-    """Что записано в ведомости «Состав проектной документации»: разделы и подразделы; есть ли ведомость вообще."""
+Place = tuple[int, int | None]  # раздел и подраздел; подраздел None — весь раздел
+
+
+def _listed_sections(ctx: Context, linear: bool) -> tuple[set[Place], set[Place], bool]:
+    """Что записано в ведомости «Состав проектной документации»: разделы и подразделы, из них — отмеченные
+    «не разрабатывается»; есть ли ведомость вообще."""
     listed = ctx.composition()
-    out: set[tuple[int, int | None]] = set()
+    out: set[Place] = set()
+    skipped: set[Place] = set()
     for item in listed:
+        places: set[Place] = set()
         sec = interpret(item.designation, ctx.codebook, linear)
         if sec and sec.number is not None:
-            out.add((sec.number, None))
+            places.add((sec.number, None))
             if sec.subsection is not None:
-                out.add((sec.number, sec.subsection))
+                places.add((sec.number, sec.subsection))
         for m in _SECTION_WORD.finditer(item.line):  # «Раздел 10. Требования…» — номер раздела словами ведомости
-            out.add((int(m.group(1)), None))
+            places.add((int(m.group(1)), None))
         if m := _SUBSECTION.search(item.line):
-            out.add((5, int(m.group(1))))
-    return out, len(listed) >= 2
+            places.add((5, int(m.group(1))))
+        out |= places
+        if item.not_developed:
+            skipped |= places
+    return out, skipped, len(listed) >= 2
 
 
 def _section_title(linear: bool, number: int, subsection: int | None = None) -> tuple[str, str]:
@@ -134,7 +143,11 @@ def _pp87_case(*codes: str, listed: tuple[str, ...] | None = None, stage: str = 
             sp = doc("СП/П-1-26-СП.pdf", 1)
             sp.designation = parse("П-1-26-СП", codebook("ru"))
             docs.append(sp)
-            texts[(sp.path, 1)] = "\n".join(f"{i} П-1-26-{c} Том" for i, c in enumerate(listed, 1))
+            lines = []  # «СМ|Не разрабатывается» — строка ведомости с примечанием
+            for i, entry in enumerate(listed, 1):
+                code, _, note = entry.partition("|")
+                lines.append(f"{i} П-1-26-{code} Том {note}".rstrip())
+            texts[(sp.path, 1)] = "\n".join(lines)
         pkg = package(*docs, jurisdiction="ru", work_kind=work)
         pkg.stage = stage
         return case(pkg, texts)
@@ -148,7 +161,7 @@ def _without(*drop: str) -> tuple[str, ...]:
 
 @rule(
     "ru.completeness.pp87",
-    version="0.1.0",
+    version="0.2.0",
     title="Обязательные разделы проектной документации по ПП 87",
     family=Family.completeness,
     kind="presence",
@@ -185,6 +198,23 @@ def _without(*drop: str) -> tuple[str, ...]:
             items={"раздел 12": Status.manual},
         ),
         Fixture(
+            "смета «не разрабатывается» — условный, проверить",
+            _pp87_case(*_without("СМ"), listed=(*_without("СМ"), "СМ|Не разрабатывается")),
+            {Status.violated: 0, Status.manual: 1},
+            items={"раздел 12": Status.manual},
+        ),
+        Fixture(
+            "обязательный раздел «не разрабатывается» — нарушение",
+            _pp87_case(*_without("ООС"), listed=(*_without("ООС"), "ООС|Не разрабатывается")),
+            {Status.violated: 1},
+            items={"раздел 8": Status.violated},
+        ),
+        Fixture(
+            "подраздел связи «не разрабатывается» — решение записано",
+            _pp87_case(*_without("ИОС5"), listed=(*_without("ИОС5"), "ИОС5|Не разрабатывается")),
+            {Status.violated: 0, Status.manual: 0},
+        ),
+        Fixture(
             "реконструкция: состав — по заданию",
             _pp87_case(*_without("ООС"), work="reconstruction"),
             {Status.violated: 0, Status.manual: 1},
@@ -211,7 +241,7 @@ def completeness_pp87(ctx: Context) -> Iterator[Outcome]:
         return
     linear = _is_linear(ctx)
     present = _sections(ctx, linear)
-    listed, has_composition = _listed_sections(ctx, linear)
+    listed, skipped, has_composition = _listed_sections(ctx, linear)
     work = ctx.work_kind
     by_assignment = work in ("reconstruction", "capital_repair")
     found: list[int] = []
@@ -230,6 +260,8 @@ def completeness_pp87(ctx: Context) -> Iterator[Outcome]:
                 status, why = Status.violated, "обязателен для строительства"
             if not has_composition:
                 where = "ведомости «Состав проектной документации» в пакете нет"
+            elif (req.number, None) in skipped:
+                where = "в «Составе проектной документации» отмечен «не разрабатывается»"
             elif (req.number, None) in listed:
                 where = "в «Составе проектной документации» раздел указан, но тома нет"
             else:
@@ -241,6 +273,7 @@ def completeness_pp87(ctx: Context) -> Iterator[Outcome]:
                     "section": req.number,
                     "code": code,
                     "listed": (req.number, None) in listed,
+                    "not_developed": (req.number, None) in skipped,
                     "work": work,
                     "condition": req.condition,
                 },
@@ -250,7 +283,7 @@ def completeness_pp87(ctx: Context) -> Iterator[Outcome]:
             continue
         found.append(req.number)
         for sub in req.subsections:
-            if (req.number, sub) in present:
+            if (req.number, sub) in present or (req.number, sub) in skipped:  # «не разрабатывается» — решение записано
                 continue
             sub_title, sub_code = _section_title(linear, req.number, sub)
             yield Outcome(
@@ -320,7 +353,7 @@ def _norm_case(*texts: str, **params):
 
 @rule(
     "ru.norms.registry",
-    version="0.1.0",
+    version="0.2.0",
     title="Ссылки на нормы — на действующие редакции по реестру «Стройкомплекс.РФ»",
     family=Family.norms,
     kind="reference",
@@ -340,6 +373,14 @@ def _norm_case(*texts: str, **params):
     ),
     fixtures=(
         Fixture("прежняя редакция СП", _norm_case("согласно СП 54.13330.2016"), {Status.violated: 1, Status.ok: 0}),
+        Fixture(
+            "СНиП в наименовании действующего СП — не ссылка",
+            _norm_case(
+                "СП 54.13330.2022 «Здания жилые многоквартирные. Актуализированная редакция СНиП 31-01-2003»; "
+                "СП 1.13130.2020 взамен СП 1.13130.2009"
+            ),
+            {Status.violated: 0, Status.ok: 1},
+        ),
         Fixture("актуализированный СНиП", _norm_case("по СНиП 2.04.02-84*"), {Status.violated: 1}),
         Fixture("заменённый стандарт СПДС", _norm_case("оформлено по ГОСТ Р 21.1101-2013"), {Status.violated: 1}),
         Fixture(
@@ -466,10 +507,13 @@ TEP = {
 }
 _TEP_LINE = re.compile(
     r"^\s*(?:\d{1,2}[.)]?\s+)?(?P<label>" + "|".join(f"(?:{rx})" for rx in TEP.values()) + r")"
-    r"[^\d\n]{0,14}?(?P<value>\d{1,3}(?:[  ]\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?)",
+    r"(?P<gap>[^\d\n]{0,24}?)(?P<value>\d{1,3}(?:[  ]\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?)",
     re.IGNORECASE,
 )
 _TEP_KEYS = [(name, re.compile(rf"^(?:{rx})$", re.IGNORECASE)) for name, rx in TEP.items()]
+# между показателем и числом — только единицы и слова про само здание; «Площадь застройки ТП», «… навеса» —
+# показатель другого сооружения
+_GAP_WORDS = frozenset({"м", "кв", "куб", "га", "шт", "эт", "здания", "дома", "объекта", "жилого", "всего", "итого"})
 
 
 @dataclass(frozen=True)
@@ -495,7 +539,8 @@ def tep_facts(ctx: Context) -> list[TepFact]:
                 continue
             label = " ".join(m.group("label").split())
             name = next((n for n, rx in _TEP_KEYS if rx.match(label)), None)
-            if name:
+            words = re.findall(r"[А-Яа-яЁёA-Za-z]+", m.group("gap"))  # «м²»: «²» — не буква, а символ единицы
+            if name and all(w.lower() in _GAP_WORDS for w in words):
                 out.append(TepFact(name, _number(m.group("value")), " ".join(line.split()), d, pt.number))
     return out
 
@@ -519,7 +564,7 @@ _PZ_TEP = "Площадь застройки 1 608,4 м²\nОбщая площа
 
 @rule(
     "ru.tep.consistent",
-    version="0.1.0",
+    version="0.2.0",
     title="ТЭП в томах совпадают с пояснительной запиской",
     family=Family.consistency,
     kind="consistency",
@@ -549,6 +594,11 @@ _PZ_TEP = "Площадь застройки 1 608,4 м²\nОбщая площа
             "общая площадь квартир — другой показатель",
             _tep_case(_PZ_TEP, АР="Общая площадь квартир 21 000,0 м²"),
             {Status.violated: 0},
+        ),
+        Fixture(
+            "площадь застройки ТП — другое сооружение",
+            _tep_case(_PZ_TEP, ИОС1="Площадь застройки ТП 25,0 м²\nПлощадь застройки, м²: 1 608,4"),
+            {Status.violated: 0, Status.ok: 1},
         ),
         Fixture(
             "нет ТЭП в ПЗ", _tep_case("Пояснительная записка", АР="Площадь застройки 10 м²"), {Status.cannot_check: 1}

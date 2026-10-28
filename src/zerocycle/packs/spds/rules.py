@@ -683,6 +683,8 @@ def _matches(a: Designation, b: Designation) -> bool:
 
 
 def _composition_case(listed: list[str], present: list[str]):
+    """Строки ведомости: шифр тома; «ТХ|Не разрабатывается» — с примечанием в строке."""
+
     def build():
         cb = codebook("ru")
         docs = []
@@ -693,7 +695,11 @@ def _composition_case(listed: list[str], present: list[str]):
         sp = doc("СП/2345-СП.pdf", 1)
         sp.designation = parse("2345-СП", cb)
         docs.append(sp)
-        text = "Состав проектной документации\n" + "\n".join(f"{i} 2345-{c} Раздел" for i, c in enumerate(listed, 1))
+        lines = []
+        for i, entry in enumerate(listed, 1):
+            code, _, note = entry.partition("|")
+            lines.append(f"{i} 2345-{code} Раздел {note}".rstrip())
+        text = "Состав проектной документации\n" + "\n".join(lines)
         return case(package(*docs, jurisdiction="ru"), {(sp.path, 1): text})
 
     return build
@@ -701,7 +707,7 @@ def _composition_case(listed: list[str], present: list[str]):
 
 @rule(
     "spds.composition.volumes",
-    version="0.1.0",
+    version="0.2.0",
     title="«Состав проектной документации» и тома пакета совпадают",
     family=Family.completeness,
     kind="consistency",
@@ -738,6 +744,17 @@ def _composition_case(listed: list[str], present: list[str]):
             _composition_case(["ПЗ", "ИОС4"], ["ПЗ", "ИОС4.1", "ИОС4.2"]),
             {Status.violated: 0, Status.ok: 1},
         ),
+        Fixture(
+            "«не разрабатывается» — тома и нет",
+            _composition_case(["ПЗ", "АР", "ИОС6|Не разрабатывается"], ["ПЗ", "АР"]),
+            {Status.violated: 0, Status.ok: 1},
+        ),
+        Fixture(
+            "«не разрабатывается», а том есть",
+            _composition_case(["ПЗ", "АР", "СМ|Не разрабатывается"], ["ПЗ", "АР", "СМ"]),
+            {Status.violated: 1},
+            items={"не разрабатывается, но есть: 2345-СМ": Status.violated},
+        ),
         Fixture("нет ведомости", lambda: case(package(doc("АР.pdf", 2), jurisdiction="ru")), {Status.cannot_check: 1}),
     ),
 )
@@ -752,7 +769,19 @@ def composition_volumes(ctx: Context) -> Iterator[Outcome]:
     for item in listed:
         if item.designation.base != base:
             continue
-        if any(_matches(d.designation, item.designation) for d in volumes):
+        present = [d for d in volumes if _matches(d.designation, item.designation)]
+        if item.not_developed:  # «Не разрабатывается»: тома и не должно быть; есть — противоречие
+            if present:
+                yield Outcome(
+                    Status.violated,
+                    f"Том {item.designation.text} в «Составе проектной документации» отмечен «не разрабатывается», "
+                    f"а в пакете он есть («{present[0].path}»)",
+                    anchors=(item.anchor, ctx.anchor(present[0], 1, quote=present[0].designation.text)),
+                    values={"designation": item.designation.text, "line": item.line, "document": present[0].path},
+                    item=f"не разрабатывается, но есть: {item.designation.text}",
+                )
+            continue
+        if present:
             matched += 1
             continue
         yield Outcome(

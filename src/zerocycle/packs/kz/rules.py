@@ -328,7 +328,7 @@ def _norm_case(*texts: str):
 
 @rule(
     "kz.norms.agsk1",
-    version="0.1.0",
+    version="0.2.0",
     title="Ссылки на нормы — на действующие редакции по АГСК-1",
     family=Family.norms,
     kind="reference",

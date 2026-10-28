@@ -32,10 +32,21 @@ _WORK = (
 )
 
 
+BEFORE_CHARS = 60  # сколько текста перед ссылкой помнить: «Актуализированная редакция СНиП …» — не ссылка
+# упоминание, а не ссылка: заменённый документ в наименовании действующего СП, «взамен …», «вместо …»
+_MENTION = re.compile(r"(?:актуализированн\w*\s+редакци\w*|взамен|вместо|заменя\w*|замен[её]н\w*)\W*$", re.IGNORECASE)
+_NOT_DEVELOPED = re.compile(r"не\s+разрабатыва|не\s+требуется|не\s+выполня", re.IGNORECASE)
+
+
 @dataclass
 class NormRefHit:
     designation: NormDesignation
     anchor: Anchor
+    before: str = ""  # текст перед обозначением на странице
+
+    @property
+    def mention(self) -> bool:
+        return bool(_MENTION.search(" ".join(self.before.split())))
 
 
 @dataclass
@@ -45,6 +56,11 @@ class Listed:
     designation: Designation
     anchor: Anchor
     line: str
+
+    @property
+    def not_developed(self) -> bool:
+        """«Раздел 12 … — Не разрабатывается»: раздел записан, но сознательно не выполняется."""
+        return bool(_NOT_DEVELOPED.search(self.line))
 
 
 # «Состав проектной документации» (ГОСТ Р 21.101-2020, 8.1.6), «Состав проекта», «Состав рабочего проекта» (РК)
@@ -94,7 +110,8 @@ class Context:
             page = PageText(number, text)
             if doc is not None:
                 page.refs = [
-                    NormRefHit(d, self.anchor(doc, number, quote=d.text)) for d, _, _ in find_designations(text)
+                    NormRefHit(d, self.anchor(doc, number, quote=d.text), text[max(0, a - BEFORE_CHARS) : a])
+                    for d, a, _ in find_designations(text)
                 ]
             self._pages.setdefault(path, {})[number] = page
         self._loaded: set[str] = set(self._pages)
@@ -161,8 +178,12 @@ class Context:
                 yield doc, page
 
     def norm_refs(self) -> list[NormRefHit]:
-        """Все ссылки на нормативные документы в текстах пакета — с якорем на лист и рамкой обозначения."""
-        return [hit for _, page in self.text_pages() for hit in page.refs]
+        """Ссылки на нормативные документы в текстах пакета — с якорем на лист и рамкой обозначения.
+
+        Упоминания не в счёт: «СП 54.13330.2022 «… Актуализированная редакция СНиП 31-01-2003»» ссылается на СП,
+        а СНиП здесь — часть наименования; «взамен СНиП …» говорит о замене, а не применяет документ.
+        """
+        return [hit for _, page in self.text_pages() for hit in page.refs if not hit.mention]
 
     def textless(self) -> list[tuple[Document, int]]:
         """Страницы без текстового слоя по описи (сканы, текст в кривых) — для честного «проверить вручную»."""
@@ -226,9 +247,9 @@ class Context:
                     height = page.get_size()[1]
                     pt = PageText(i + 1, text)
                     for d, a, b in find_designations(text):
-                        pt.refs.append(
-                            NormRefHit(d, self.anchor(doc, i + 1, _span_box(textpage, text, a, b, height), d.text))
-                        )
+                        box = _span_box(textpage, text, a, b, height)
+                        before = text[max(0, a - BEFORE_CHARS) : a]
+                        pt.refs.append(NormRefHit(d, self.anchor(doc, i + 1, box, d.text), before))
                     pages[i + 1] = pt
                 finally:
                     textpage.close()

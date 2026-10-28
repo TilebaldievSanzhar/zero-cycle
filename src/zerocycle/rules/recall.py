@@ -81,6 +81,20 @@ class PackageResult:
     related: list[Finding] = field(default_factory=list)
     withheld: int = 0
     errors: list[str] = field(default_factory=list)
+    notes: list[dict] = field(default_factory=list)  # места, где верный ответ — не «нарушено» (эталон v1)
+    at_notes: dict[int, list[str]] = field(default_factory=dict)  # номер места → статусы находок на нём
+
+
+def at_note(note: dict, f: Finding) -> bool:
+    """Находка на отвлекающем месте эталона: тот же раздел, обозначение или файл и лист (page = null — весь файл)."""
+    if note.get("section") is not None and f.values.get("section") == note["section"]:
+        return True
+    if note.get("designation") and f.values.get("designation") == note["designation"]:
+        return True
+    files = {a.file for a in f.anchors} | {str(f.values.get("document", ""))}
+    if not note.get("file") or note["file"] not in files:
+        return False
+    return note.get("page") is None or any(a.page == note["page"] for a in f.anchors if a.file == note["file"])
 
 
 def evaluate(name: str, truth: dict, findings: list[Finding]) -> PackageResult:
@@ -105,6 +119,11 @@ def evaluate(name: str, truth: dict, findings: list[Finding]) -> PackageResult:
             res.related.append(f)
         else:
             res.false_alarms.append(f)
+    res.notes = truth.get("notes", [])
+    for j, note in enumerate(res.notes):
+        hits = [f.status.value for k, f in enumerate(findings) if k not in used and at_note(note, f)]
+        if hits:
+            res.at_notes[j] = hits
     return res
 
 
@@ -177,6 +196,23 @@ def markdown(s: Summary) -> str:
             where = d.get("file") or d.get("designation") or ""
             detail = {k: v for k, v in d.items() if k in ("expected", "actual", "page", "role", "field")}
             lines.append(f"- {name}: {d['id']} {where} {json.dumps(detail, ensure_ascii=False)}")
+    kinds: dict[str, Counter[str]] = defaultdict(Counter)
+    for p in s.packages:
+        for j, note in enumerate(p.notes):
+            c = kinds[f"{note.get('kind', '?')} (ждём {note.get('expected', '?')})"]
+            c["places"] += 1
+            for status in set(p.at_notes.get(j, [])):
+                c[status] += 1
+    if kinds:
+        lines += [
+            "",
+            "Отвлекающие места эталона — «нарушено» на них ложное:",
+            "",
+            "| Место | Мест | С «нарушено» | С «проверить вручную» |",
+            "|---|---|---|---|",
+        ]
+        for kind, c in sorted(kinds.items()):
+            lines.append(f"| {kind} | {c['places']} | {c.get('violated', 0)} | {c.get('manual', 0)} |")
     alarms = [(p.name, f) for p in s.packages for f in p.false_alarms]
     if alarms:
         lines += ["", "Ложные тревоги:", ""]
