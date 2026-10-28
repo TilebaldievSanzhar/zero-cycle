@@ -49,8 +49,8 @@
 | `zerocycle.model` | типы: Package, Document, Page, TitleBlock, Fact, Anchor, NormRef, Rule, Finding, Decision, Run |
 | `zerocycle.ingest` | `pdf` (pdfplumber), `pde` (info.xml), `xlsx`, `xml` (XSD); позже `scan` (OCR) и `ifc` (отдельный процесс) |
 | `zerocycle.extract` | `titleblock`, `designation`, `normrefs`, `tep`, `registers` (ведомости, содержания, «Состав ПД») |
-| `zerocycle.norms` | индекс норм и адаптеры: `stroykompleks` (РФ), позже РК |
-| `zerocycle.rules` | реестр, применимость, исполнение, фикстуры, карточки |
+| `zerocycle.norms` | разбор обозначений норм (`designation`), индекс действующих документов и вердикт по ссылке (`index`): действует, редакция заменена, заменён, нет в индексе, вид вне индекса; адаптеры: `agsk1` (РК, готов 28.10), `stroykompleks` (РФ, шаг 0.7) |
+| `zerocycle.rules` | реестр, применимость, исполнение, фикстуры, карточки; контекст проверки читает тексты страниц лениво (pypdfium2); grounding-гейт и список оснований `bases.toml` ([ADR 0005](adr/0005-rule-engine.md)) |
 | `zerocycle.packs` | `core`, `spds` по редакциям (2020, 97), `ru`, `kz`, позже `kg`; `context(юрисдикция, организация)` собирает для извлечения справочник шифров, профиль основных надписей и формы юрлиц; слой организации — TOML поверх пакета ([ADR 0003, дополнение 27.10](adr/0003-jurisdiction-packs.md#дополнение-27102026)) |
 | `zerocycle.report` | JSON, HTML, рендер фрагмента (pypdfium2); позже BCF и docx в форме ведомости замечаний |
 | `zerocycle.llm`, `zerocycle.prompts` | копия `secondkey.llm.run()` и модулей промптов |

@@ -4,6 +4,8 @@ zerocycle scan <пакет> [-j kz] [--org org.toml] [--json out.json]   опи�
 zerocycle gen <папка> [--seed 1] [--count 5]       засеянные пакеты с эталоном (--clean — без дефектов)
 zerocycle designation <обозначение> ... [-j kz]    разбор обозначений по справочнику юрисдикции
 zerocycle remarks <заключение.pdf | папка> ...     замечания из заключений экспертизы РК, категории и замер H1
+zerocycle check <пакет> [-j kz] [--work new]       проверка пакета правилами юрисдикции: находки с якорями
+zerocycle rules [-j kz] [--cards папка]            правила юрисдикции и их карточки
 
 Юрисдикция (-j) выбирает справочник шифров и редакцию СПДС: ru — ГОСТ Р 21.101-2020, kz — ГОСТ 21.101-97.
 """
@@ -230,6 +232,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--cache", help="папка кэша текста страниц")
     r.add_argument("--items", action="store_true", help="показать пункты")
     r.set_defaults(func=_remarks)
+
+    from zerocycle.rules.cli import add_commands
+
+    add_commands(sub)  # check — проверка пакета правилами, rules — правила и их карточки
 
     args = p.parse_args(argv)
     return args.func(args)
