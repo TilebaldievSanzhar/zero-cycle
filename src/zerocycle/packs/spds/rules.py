@@ -954,6 +954,25 @@ def pde_file_names(ctx: Context) -> Iterator[Outcome]:
 # --- графа 1: одно обозначение на всех листах документа -------------------------------------------------------------
 
 
+def _major_designation(parsed: list[tuple[Sheet, Designation]]) -> str | None:
+    """Обозначение документа по листам: у явного большинства; поровну между «X» и «X.ТЧ» — полная запись части
+    (лист без хвоста внутри части — отклонение); иначе судить не по чему."""
+    counts = Counter(des.text for _, des in parsed).most_common()
+    if not counts:
+        return None
+    (top, n), rest = counts[0], counts[1:]
+    if n * 2 > len(parsed) and n >= 2:
+        return top
+    if len(counts) == 2 and rest[0][1] == n:
+        by_text = {des.text: des for _, des in parsed}
+        a, b = by_text[top], by_text[rest[0][0]]
+        if b.tail and not a.tail and belongs_to(b, a):
+            return b.text
+        if a.tail and not b.tail and belongs_to(a, b):
+            return a.text
+    return None
+
+
 def _block_case(*values: str, totals: dict[int, str] | None = None, designation: str | None = "2345-ПЗ"):
     """Листы одного файла: графа 1 по листам; графа 8 — на первых листах документов, нумерация — от них."""
 
@@ -975,7 +994,7 @@ def _block_case(*values: str, totals: dict[int, str] | None = None, designation:
 
 @rule(
     "spds.titleblock.consistent",
-    version="0.1.0",
+    version="0.2.0",
     title="На всех листах документа — его обозначение",
     family=Family.formatting,
     kind="consistency",
@@ -1005,6 +1024,18 @@ def _block_case(*values: str, totals: dict[int, str] | None = None, designation:
             items={"ПЗ.pdf:1": Status.violated},
         ),
         Fixture(
+            "часть из двух листов: на втором снят хвост",
+            _block_case(_TCH, "2345-ПЗ", totals={1: "2"}),
+            {Status.violated: 1},
+            items={"ПЗ.pdf:2": Status.violated},
+        ),
+        Fixture(
+            "часть из двух листов: на первом снят хвост",
+            _block_case("2345-ПЗ", _TCH, totals={1: "2"}),
+            {Status.violated: 1},
+            items={"ПЗ.pdf:1": Status.violated},
+        ),
+        Fixture(
             "чужой шифр — не обозначение этого документа",
             _block_case("2345-АР.ТЧ", totals={1: "1"}),
             {Status.violated: 1},
@@ -1029,14 +1060,13 @@ def titleblock_consistent(ctx: Context) -> Iterator[Outcome]:
             des = parse(s.tb.get(1), cb)
             if des is not None and des.code and _DIGIT.search(des.base):
                 parsed.append((s, des))
-        counts = Counter(des.text for _, des in parsed)
-        major, n = counts.most_common(1)[0] if counts else ("", 0)
+        major = _major_designation(parsed)
         for s, des in parsed:
             checked.add(s.doc.path)
             own = s.doc.designation
             if own is not None and not _matches(des.model_copy(update={"suffix": None}), own):
                 problem = f"не обозначение документа {own.text}"
-            elif des.text != major and n >= 2 and n * 2 > len(parsed):
+            elif major and des.text != major:
                 problem = f"на остальных листах — «{major}»"
             else:
                 good += 1
