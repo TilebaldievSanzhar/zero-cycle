@@ -320,6 +320,8 @@ def score_pilot(corpus: Path, out: Path) -> list[dict]:
     keys: dict[tuple[str, str], list[set[str]]] = {}
     for line in _lines(out / "runs.jsonl"):
         r = json.loads(line)
+        if r["arm"] == "A1-author":  # разовая подготовка руки A1 — в отчёте отдельной строкой
+            continue
         answer_path = out / "answers" / f"{r['package']}.{r['arm']}.{r['k']}.json"
         row = {k: r[k] for k in ("package", "arm", "k", "sheets", "ok", "error", "cost_usd", "minutes")}
         if r["ok"] and answer_path.exists():
@@ -400,7 +402,7 @@ def report_pilot(out: Path, rows: list[dict], mean_sheets: float) -> str:
         pts = [(r["sheets"], r["cost_usd"]) for r in rows if r["arm"] == arm and r["ok"]]
         fits[arm] = _fit(pts)
     fits.setdefault("B1", tuple(x + y for x, y in zip(fits.get("A1", (0, 0)), fits.get("B", (0, 0)), strict=True)))
-    agent = [r for r in runs if r["arm"] != "C" and r.get("five_hour") is not None]
+    agent = [r for r in runs if r["arm"] in AGENT_ARMS and r.get("five_hour") is not None]
     share = None
     if len(agent) >= 2:
         spent = sum(r["cost_usd"] for r in agent)
@@ -415,6 +417,13 @@ def report_pilot(out: Path, rows: list[dict], mean_sheets: float) -> str:
     lines += [f"- {arm}: {a:.2f} + {b * 1000:.2f} $ на 1000 листов" for arm, (a, b) in sorted(fits.items())]
     if share:
         lines += ["", f"Доля пятичасового окна на 1 $ по ценам API — {share:.4f} (по прогонам пилота)."]
+    for r in runs:
+        if r["arm"] == "A1-author":
+            lines += [
+                "",
+                f"Скилы A1 (разово): ${r['cost_usd']}, {r['minutes']} мин"
+                + (f", сбой: {r['error']}" if r["error"] else ""),
+            ]
     text = "\n".join(lines) + "\n"
     (out / "report.md").write_text(text, encoding="utf-8")
     return text
