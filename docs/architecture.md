@@ -56,7 +56,8 @@
 | `zerocycle.llm`, `zerocycle.prompts` | копия `secondkey.llm.run()` и модулей промптов |
 | `zerocycle.bench` | генератор засеянных пакетов, руки, сопоставление находок с эталоном, метрики |
 | `zerocycle.cli` | `check`, `bench`, `rules`, `recall`, `norms` |
-| позже `api`, `worker`, `mcp`, `frontend/` | из second-key: FastAPI, taskiq, S3, роли, SSE, MCP-обвязка |
+| `zerocycle.mcp` | MCP-сервер для агента по stdio: проверка в фоне, находки в схеме ответа бенчмарка, фрагмент листа с рамкой, правила и индекс норм ([ADR 0006](adr/0006-mcp-server.md), [mcp.md](mcp.md)) |
+| позже `api`, `worker`, `frontend/` | из second-key: FastAPI, taskiq, S3, роли, SSE; MCP по HTTP с токеном — там же |
 
 ## Модель данных ядра
 

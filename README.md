@@ -40,6 +40,9 @@
 На отложенном засеянном корпусе (25 пакетов, 110 дефектов) recall 1,00, ложных «нарушено» нет — на своём
 генераторе; на чужих шаблонах ещё не мерили ([docs/bench/CHECK_RU.md](docs/bench/CHECK_RU.md)).
 
+28.10.2026 — MCP-сервер (0.13): движок доступен агенту — Claude Code, Cursor — по stdio, пакет не покидает
+машину. Подключение и инструменты — [docs/mcp.md](docs/mcp.md).
+
 ## Быстрый старт
 
 ```powershell
@@ -54,6 +57,7 @@ uv run python -m zerocycle check var/real/goszakup_kz/17778737/files -j kz --md 
 uv run python -m zerocycle rules -j kz --cards docs/rules  # правила юрисдикции и их карточки
 uv run python -m zerocycle recall var/corpus             # recall правил по эталону засеянного корпуса
 uv run python -X utf8 scripts/stroykompleks_index.py      # индекс норм РФ из выгрузки реестра «Стройкомплекс.РФ»
+uv run python -m zerocycle mcp --root .                  # MCP-сервер для агента по stdio (docs/mcp.md)
 ```
 
 Команда `zerocycle` работает и напрямую (`uv run zerocycle …`), но на Windows со Smart App Control её
@@ -81,6 +85,7 @@ uv run python -X utf8 scripts/stroykompleks_index.py      # индекс нор�
 | `src/zerocycle/bench/` | генератор засеянных пакетов и каталог дефектов; руки сравнения и метрики — шаг 0.12 |
 | `src/zerocycle/rules/` | движок правил: правило = код + метаданные + фикстуры, контекст проверки, гейт, отчёт, карточки, команды `check`, `rules` и `recall` (сверка с эталоном засеянного корпуса) |
 | `src/zerocycle/packs/<пакет>/rules.py` | правила пакетов: `core` — наименования объекта и здания, стадия; `spds` — графа 1, подписи, листы, «Состав ПД», ПДЭ; `kz` — ИРД по Правилам КВЭ и ссылки по АГСК-1 (`agsk1.json`, `ird.toml`); `ru` — разделы по ПП 87 (`pp87.toml`), ссылки по реестру (`stroykompleks.json`, `replaced.toml`), ТЭП |
+| `src/zerocycle/mcp/` | MCP-сервер для агента: инструменты над прогонами проверки (`tools.py`), обвязка FastMCP по stdio (`server.py`), команда `zerocycle mcp` ([docs/mcp.md](docs/mcp.md)) |
 | `src/zerocycle/norms/` | обозначения норм, индекс действующих документов и вердикт по ссылке; сборка индекса из АГСК-1 (`scripts/agsk1_index.py`) и реестра «Стройкомплекс.РФ» (`scripts/stroykompleks_index.py`) |
 | `src/zerocycle/remarks/` | заключения экспертизы РК → пункты «Дополнений и изменений», кодбук категорий, замер H1 |
 | `docs/bench/data/` | разметка пунктов замечаний и перечень заключений, вошедших в замер |

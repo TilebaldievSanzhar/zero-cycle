@@ -6,6 +6,8 @@ zerocycle designation <обозначение> ... [-j kz]    разбор об�
 zerocycle remarks <заключение.pdf | папка> ...     замечания из заключений экспертизы РК, категории и замер H1
 zerocycle check <пакет> [-j kz] [--work new]       проверка пакета правилами юрисдикции: находки с якорями
 zerocycle rules [-j kz] [--cards папка]            правила юрисдикции и их карточки
+zerocycle recall <корпус>                          recall правил по эталону засеянного корпуса
+zerocycle mcp [--root папка] [--runs-dir папка]    MCP-сервер для агента (stdio)
 
 Юрисдикция (-j) выбирает справочник шифров и редакцию СПДС: ru — ГОСТ Р 21.101-2020, kz — ГОСТ 21.101-97.
 """
@@ -233,9 +235,11 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--items", action="store_true", help="показать пункты")
     r.set_defaults(func=_remarks)
 
+    from zerocycle.mcp.cli import add_commands as add_mcp
     from zerocycle.rules.cli import add_commands
 
-    add_commands(sub)  # check — проверка пакета правилами, rules — правила и их карточки
+    add_commands(sub)  # check — проверка пакета правилами, rules — правила и их карточки, recall — сверка с эталоном
+    add_mcp(sub)  # mcp — сервер для агента
 
     args = p.parse_args(argv)
     return args.func(args)
