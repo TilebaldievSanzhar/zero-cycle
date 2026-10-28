@@ -3,6 +3,9 @@
 zerocycle scan <пакет> [-j kz] [--org org.toml] [--json out.json]   опись: файлы, листы, основные надписи, обозначения
 zerocycle gen <папка> [--seed 1] [--count 5]       засеянные пакеты с эталоном (--clean — без дефектов)
 zerocycle gen <папка> --v1 [--heldout] [--small]   генератор v1: 300–1 500 листов, шаблоны организаций
+zerocycle bench run <итоги> --corpus <корпус> ...    прогоны рук бенчмарка: агент (claude -p) и движок
+zerocycle bench score <итоги> --corpus <корпус>      сопоставление ответов рук с эталоном, стоимость и прогноз
+zerocycle bench author <итоги> --bim-data <папка>    скилы руки A1: отдельная сессия по публичным источникам
 zerocycle designation <обозначение> ... [-j kz]    разбор обозначений по справочнику юрисдикции
 zerocycle remarks <заключение.pdf | папка> ...     замечания из заключений экспертизы РК, категории и замер H1
 zerocycle check <пакет> [-j kz] [--work new]       проверка пакета правилами юрисдикции: находки с якорями
@@ -85,6 +88,47 @@ def _gen(args: argparse.Namespace) -> int:
         if prof := gt.get("profile"):
             extra = f" · шаблон {prof['template']} ({prof['split']}), листов {prof['sheets']}"
         print(f"{out}: дефектов {len(gt['defects'])} ({', '.join(d['id'] for d in gt['defects']) or 'чистый'}){extra}")
+    return 0
+
+
+def _bench_run(args: argparse.Namespace) -> int:
+    from zerocycle.bench.pilot import run_pilot
+
+    runs = dict(item.split("=") for item in args.runs.split(",")) if "=" in args.runs else {}
+    default = int(args.runs) if "=" not in args.runs else 1
+    arms = args.arms.split(",")
+    results = run_pilot(
+        Path(args.corpus),
+        Path(args.out),
+        packages=args.packages.split(","),
+        arms=arms,
+        runs={a: int(runs.get(a, default)) for a in arms},
+        model=args.model,
+        budget=args.budget,
+        runs_root=Path(args.runs_root),
+        skills=Path(args.skills) if args.skills else None,
+        effort=args.effort,
+        parallel=args.parallel,
+        stop_at=args.stop_at,
+    )
+    print(f"прогонов: {len(results)}, успешных: {sum(r.ok for r in results)}")
+    return 0
+
+
+def _bench_author(args: argparse.Namespace) -> int:
+    from zerocycle.bench.pilot import author_skills
+
+    r = author_skills(Path(args.out), Path(args.workdir), Path(args.bim_data), args.model, args.budget, args.effort)
+    status = "ok" if r.ok else f"сбой: {r.error}"
+    print(f"скилы A1: {status} · ${r.cost_usd} · {r.minutes} мин")
+    return 0 if r.ok else 1
+
+
+def _bench_score(args: argparse.Namespace) -> int:
+    from zerocycle.bench.pilot import report_pilot, score_pilot
+
+    rows = score_pilot(Path(args.corpus), Path(args.out))
+    print(report_pilot(Path(args.out), rows, args.mean_sheets))
     return 0
 
 
@@ -234,6 +278,36 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--heldout", action="store_true", help="v1: отложенная выборка — в разработке не открывать")
     g.add_argument("--small", action="store_true", help="v1: маленький пакет (~100 листов) для отладки")
     g.set_defaults(func=_gen)
+
+    b = sub.add_parser("bench", help="бенчмарк: прогоны рук и оценка (docs/bench/PROTOCOL.md)")
+    bsub = b.add_subparsers(dest="bench_cmd", required=True)
+    br = bsub.add_parser("run", help="прогоны рук на пакетах корпуса")
+    br.add_argument("out", help="папка итогов: runs.jsonl, ответы, расшифровки")
+    br.add_argument("--corpus", required=True, help="корпус: папки пакетов с package/ и ground_truth.json")
+    br.add_argument("--packages", required=True, help="пакеты через запятую: v1-dev-0222,v1-dev-0212")
+    br.add_argument("--arms", default="C,A0,A1,B", help="руки через запятую")
+    br.add_argument("--runs", default="2", help="прогонов на руку: 2 или по рукам: C=5,A0=2,A1=2,B=2")
+    br.add_argument("--model", default="claude-opus-5-5", help="модель агентских рук")
+    br.add_argument("--effort", help="усилие модели агентских рук (по умолчанию — как у Claude Code)")
+    br.add_argument("--budget", type=float, default=15.0, help="потолок долларов на прогон по ценам API")
+    br.add_argument("--runs-root", default="C:/zc-pilot/runs", help="папки рук — вне репозитория и корпуса")
+    br.add_argument("--skills", help="скилы руки A1 (папка с подпапками скилов)")
+    br.add_argument("--parallel", type=int, default=3, help="агентских прогонов одновременно")
+    br.add_argument("--stop-at", type=float, default=0.95, help="остановиться при такой доле окна подписки")
+    br.set_defaults(func=_bench_run)
+    ba = bsub.add_parser("author", help="скилы руки A1: отдельная сессия по публичным источникам bim-data")
+    ba.add_argument("out", help="папка итогов: скилы — в <out>/skills_A1")
+    ba.add_argument("--workdir", default="C:/zc-pilot/a1-author", help="рабочая папка сессии — вне репозитория")
+    ba.add_argument("--bim-data", required=True, help="папка bim-data: публичные источники")
+    ba.add_argument("--model", default="claude-opus-5-5")
+    ba.add_argument("--effort")
+    ba.add_argument("--budget", type=float, default=15.0, help="потолок долларов по ценам API")
+    ba.set_defaults(func=_bench_author)
+    bs = bsub.add_parser("score", help="оценка ответов, стоимость и прогноз полного прогона")
+    bs.add_argument("out")
+    bs.add_argument("--corpus", required=True)
+    bs.add_argument("--mean-sheets", type=float, default=700.0, help="средний объём пакета полного прогона")
+    bs.set_defaults(func=_bench_score)
 
     d = sub.add_parser("designation", help="разбор обозначений")
     d.add_argument("text", nargs="+")
