@@ -31,6 +31,9 @@ BOTTOM_FIRST = 297 - 5 - 40 - 5  # над формой 5
 BOTTOM_NEXT = 297 - 5 - 15 - 5  # над формой 6
 PARA_SIZE = 10.0
 ROW_H = 8.0
+# недопустимые в имени файла символы обозначения заменяют на «_» (ГОСТ Р 21.101-2020, прил. А к п. 8.2.6):
+# «ЖК-44/2026-ООС» → «ЖК-44_2026-ООС.pdf»
+FILE_UNSAFE = str.maketrans(dict.fromkeys('\\/:*?"<>|', "_"))
 
 
 @dataclass
@@ -66,7 +69,7 @@ class TomSpec:
 
     @property
     def path(self) -> str:
-        return f"{self.folder}/{self.file_name or self.designation + '.pdf'}"
+        return f"{self.folder}/{self.file_name or self.designation.translate(FILE_UNSAFE) + '.pdf'}"
 
 
 @dataclass

@@ -6,6 +6,7 @@ import json
 import pytest
 
 from zerocycle.bench.corpus import generate
+from zerocycle.bench.generator import build
 from zerocycle.packs import context
 from zerocycle.scan import scan
 
@@ -88,3 +89,10 @@ def test_defects_are_visible_in_scan(corpus):
         assert not any(d.designation and d.designation.text == defects[code]["designation"] for d in pkg.documents)
     assert defects["F06"]["file"] in docs
     assert any(defects["F07"]["guid"] in issue for issue in pkg.pde.issues)
+
+
+def test_unsafe_characters_in_file_names():
+    """База «ЖК-44/2026»: «/» в имени файла — «_» (ГОСТ Р 21.101-2020, прил. А к п. 8.2.6), а не лишняя папка."""
+    spec = next(s for s in map(build, range(1, 60)) if "/" in s.base)
+    for tom in [*spec.toms, spec.composition]:
+        assert tom.path == f"{tom.folder}/{tom.designation.replace('/', '_')}.pdf"
