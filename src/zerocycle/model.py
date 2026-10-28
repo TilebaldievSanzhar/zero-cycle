@@ -142,6 +142,9 @@ class Page(BaseModel):
     paper: str | None = None  # формат по ГОСТ 2.301: A4, A3, A4x3…; None — нестандартный
     landscape: bool = False
     has_text: bool = True  # есть текстовый слой; нет — скан или текст переведён в кривые: нужен OCR
+    # лист боком без /Rotate: на сколько градусов по часовой опись повернула лист, чтобы читать (0, 90, 270);
+    # bbox граф — в системе повёрнутого листа, тот же вид даёт pypdfium2 render(rotation=turn)
+    turn: int = 0
     title_block: TitleBlock | None = None
 
 

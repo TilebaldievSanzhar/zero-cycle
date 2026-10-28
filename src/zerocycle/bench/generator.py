@@ -7,6 +7,15 @@
 Система обозначений «организации» (ГОСТ Р 21.101-2020, п. 4.1.3.3 оставляет её стандарту организации):
 том — «<база>-<шифр><номера>», текстовая часть — «<том>.ТЧ», графическая — «<том>.ГЧ», содержание —
 «<том>-С», состав ПД — «<база>-СП». Один том — один PDF в папке раздела.
+
+Генератор v1 (`bench/v1.py`, шаг 0.4b) собирает описание того же вида с полями v1. Рисует его тот же `render`,
+и v0 от этого не меняется ни на байт. Что добавляет v1:
+- штампы организаций;
+- печать с уменьшением, /Rotate и листы боком;
+- таблицы над штампом, примечания на чертежах, дополнительные графы на поле для подшивки;
+- приложения и сметные формы без основной надписи;
+- строки «Не разрабатывается» в «Составе ПД»;
+- notes эталона — места, где правильный ответ не «нарушено».
 """
 
 from __future__ import annotations
@@ -18,12 +27,13 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from lxml import etree
+from reportlab.lib.utils import ImageReader
 
 from zerocycle import __version__
 from zerocycle.bench import content as C
-from zerocycle.bench.draw import FONT, Sheet, TitleValues, new_canvas, register_font
+from zerocycle.bench.draw import FONT, Sheet, StampStyle, TitleValues, new_canvas, register_font, styled_profile
 from zerocycle.packs import codebook
-from zerocycle.units import format_size
+from zerocycle.units import format_size, pt
 
 A4_TEXT = (25.0, 200.0)  # x текста на листе А4 с рамкой 20/5
 TOP = 15.0
@@ -34,22 +44,38 @@ ROW_H = 8.0
 # недопустимые в имени файла символы обозначения заменяют на «_» (ГОСТ Р 21.101-2020, прил. А к п. 8.2.6):
 # «ЖК-44/2026-ООС» → «ЖК-44_2026-ООС.pdf»
 FILE_UNSAFE = str.maketrans(dict.fromkeys('\\/:*?"<>|', "_"))
+ROLES = ("Разраб.", "Пров.", "Н. контр.", "ГИП")
 
 
 @dataclass
 class SheetSpec:
-    kind: str  # title | contents | text | drawing | composition
-    paper: str
+    kind: str  # title | contents | text | drawing | composition | appendix | estimate
+    paper: str  # формат листа (что записано в графе 26)
     landscape: bool
-    form: int | None  # None — титульный лист без основной надписи
+    form: int | None  # None — лист без основной надписи: титульный, приложение, сметная форма
     graphs: dict[int, str] = field(default_factory=dict)
     signatures: list[tuple[str, str, str]] = field(default_factory=list)
     changes: list[tuple[str, str, str, str, str]] = field(default_factory=list)
-    blocks: list[tuple] = field(default_factory=list)  # ("p", текст) | ("table", ширины, шапка, строки, метка)
+    blocks: list[tuple] = field(
+        default_factory=list
+    )  # ("p", текст[, метка]) | ("table", ширины, шапка, строки, метка…)
     drawing: str | None = None  # наименование изображения на листе
-    register: list[list[str]] | None = None  # ведомость графической части на первом листе
+    register: list[list[str]] | None = None  # ведомость графической части (её часть на этом листе)
     keep: bool = True  # False — лист выброшен дефектом
     tags: list[str] = field(default_factory=list)  # метки дефектов: при рисовании превращаются в номер страницы
+    # --- генератор v1 ---
+    style: StampStyle | None = None  # основная надпись организации; None — по прил. Ж
+    page: str | None = None  # формат страницы, если лист напечатан с уменьшением; None — как paper
+    scale: float = 1.0  # масштаб печати листа на странице page
+    rotate: int = 0  # /Rotate: страница хранится повёрнутой, при показе лист стоит ровно
+    sideways: int = 0  # содержимое повёрнуто без /Rotate — лист показывается боком (90 — против часовой)
+    margin: str | None = None  # инвентарный номер подлинника в дополнительных графах на поле для подшивки
+    above: tuple | None = None  # таблица вплотную над основной надписью: (заголовок, ширины, шапка, строки)
+    footnotes: list[str] = field(default_factory=list)  # «Примечания» на чертеже
+    lines: list[str] = field(default_factory=list)  # строки листа без рамки (приложение, шапка сметы)
+    image: int | None = None  # приложение-скан без текстового слоя: вариант картинки
+    truth: list[dict] = field(default_factory=list)  # записи notes эталона: отвлекающее содержимое листа
+    register_more: bool = False  # ведомость продолжается с предыдущего листа
 
 
 @dataclass
@@ -66,6 +92,8 @@ class TomSpec:
     present: bool = True  # файл есть в пакете
     in_composition: bool = True  # указан в «Составе ПД»
     file_name: str = ""
+    developed: bool = True  # False — в «Составе ПД» строка «Не разрабатывается», тома нет и быть не должно
+    truth: list[dict] = field(default_factory=list)  # notes эталона на весь файл тома (v1)
 
     @property
     def path(self) -> str:
@@ -88,9 +116,20 @@ class PackageSpec:
     project_guid: str
     toms: list[TomSpec] = field(default_factory=list)
     composition: TomSpec | None = None
+    # --- генератор v1 ---
+    version: int = 0
+    template: str | None = None  # шаблон организации (bench/templates.py)
+    split: str | None = None  # dev | heldout
+    roles: tuple[str, str, str, str] | None = None  # подписи ролей шаблона
+    sign_dates: tuple[str, str, str, str] | None = None  # даты подписей: разработал, проверил, н. контр., ГИП
+    text_style: StampStyle | None = None  # основная надпись текстовых документов, в том числе «Состава ПД»
+    notes: list[dict] = field(default_factory=list)  # notes эталона уровня пакета
+    profile: dict = field(default_factory=dict)  # что записать в эталон: шаблон, выборка, объём
 
     def tom(self, code: str, numbers: tuple[int, ...] = ()) -> TomSpec | None:
-        return next((t for t in self.toms if t.code == code and t.numbers[: len(numbers)] == numbers), None)
+        return next(
+            (t for t in self.toms if t.code == code and t.numbers[: len(numbers)] == numbers and t.developed), None
+        )
 
 
 def _num(x: float, decimals: int = 1) -> str:
@@ -199,24 +238,18 @@ def build(seed: int) -> PackageSpec:
     return spec
 
 
-def _signs(spec: PackageSpec, form: int) -> list[tuple[str, str, str]]:
-    p, d = spec.people, spec.date
-    if form == 5:
-        return [
-            ("Разраб.", p["dev"], d),
-            ("Пров.", p["check"], d),
-            ("", "", ""),
-            ("Н. контр.", p["nk"], d),
-            ("ГИП", p["gip"], d),
-        ]
-    return [
-        ("Разраб.", p["dev"], d),
-        ("Пров.", p["check"], d),
-        ("", "", ""),
-        ("", "", ""),
-        ("Н. контр.", p["nk"], d),
-        ("ГИП", p["gip"], d),
-    ]
+def _signs(
+    spec: PackageSpec,
+    form: int,
+    people: dict[str, str] | None = None,
+    roles: tuple[str, str, str, str] | None = None,
+) -> list[tuple[str, str, str]]:
+    """Подписи формы 5 или 3: разработал, проверил, пустые строки, нормоконтроль, ГИП."""
+    p = people or spec.people
+    r = roles or spec.roles or ROLES
+    d = spec.sign_dates or (spec.date,) * 4
+    blank = [("", "", "")] * (1 if form == 5 else 2)
+    return [(r[0], p["dev"], d[0]), (r[1], p["check"], d[1]), *blank, (r[2], p["nk"], d[2]), (r[3], p["gip"], d[3])]
 
 
 def _norm_rows(sec: dict, rng: random.Random) -> list[list[str]]:
@@ -242,13 +275,19 @@ def _blocks(spec: PackageSpec, sec: dict, fill: dict, rng: random.Random) -> lis
     return blocks
 
 
-def paginate(blocks: list[tuple], width: float = A4_TEXT[1] - A4_TEXT[0]) -> list[list[tuple]]:
-    """Разбить блоки по листам А4 так же, как их нарисует render: первый лист — над формой 5, дальше — над 6."""
+def paginate(
+    blocks: list[tuple],
+    width: float = A4_TEXT[1] - A4_TEXT[0],
+    bottoms: tuple[float, float] = (BOTTOM_FIRST, BOTTOM_NEXT),
+) -> list[list[tuple]]:
+    """Разбить блоки по листам А4 так же, как их нарисует render: первый лист — над формой 5, дальше — над 6.
+
+    bottoms — нижняя граница текста над формами 5 и 6; у штампа организации выше строки — выше и граница."""
     from reportlab.lib.utils import simpleSplit
 
     register_font()
     pages: list[list[tuple]] = [[]]
-    y, bottom = TOP, BOTTOM_FIRST
+    y, bottom = TOP, bottoms[0]
     for b in blocks:
         if b[0] == "p":
             h = len(simpleSplit(b[1], FONT, PARA_SIZE, width * 72 / 25.4)) * PARA_SIZE * 0.45 + 2.0
@@ -256,7 +295,7 @@ def paginate(blocks: list[tuple], width: float = A4_TEXT[1] - A4_TEXT[0]) -> lis
             h = (len(b[3]) + 1) * ROW_H + 4.0
         if y + h > bottom and pages[-1]:
             pages.append([])
-            y, bottom = TOP, BOTTOM_NEXT
+            y, bottom = TOP, bottoms[1]
         pages[-1].append(b)
         y += h
     return pages
@@ -348,6 +387,14 @@ def _tom_sheets(spec: PackageSpec, tom: TomSpec, sec: dict, fill: dict, rng: ran
     return sheets
 
 
+def text_bottoms(style: StampStyle | None) -> tuple[float, float]:
+    """Нижняя граница текста на листе А4 над формами 5 и 6 основной надписи стиля, мм от верха листа."""
+    if style is None:
+        return BOTTOM_FIRST, BOTTOM_NEXT
+    forms = styled_profile(style).forms
+    return 297 - 5 - forms[5].height - 5, 297 - 5 - forms[6].height - 5
+
+
 def _paper_text(paper: str) -> str:
     return paper.replace("A", "А").replace("x", "х")  # в графе 26 пишут кириллицей: «А3», «А4х3»
 
@@ -368,7 +415,11 @@ def _composition(spec: PackageSpec, rng: random.Random) -> TomSpec:
 
 
 def composition_rows(spec: PackageSpec) -> list[list[str]]:
-    return [[t.number, t.designation, t.title, ""] for t in spec.toms if t.in_composition]
+    return [
+        [t.number, t.designation, t.title, "" if t.developed else "Не разрабатывается"]
+        for t in spec.toms
+        if t.in_composition
+    ]
 
 
 # --- рисование ------------------------------------------------------------------------------------
@@ -379,10 +430,11 @@ def render(spec: PackageSpec, out: Path, defects: list[dict]) -> Path:
     pkg = out / "package"
     pkg.mkdir(parents=True, exist_ok=True)
     expected: list[dict] = []
+    notes: list[dict] = []
     for tom in spec.toms:
         if tom.present:
-            expected += _render_tom(spec, tom, pkg)
-    expected += _render_composition(spec, pkg)
+            expected += _render_tom(spec, tom, pkg, notes)
+    expected += _render_composition(spec, pkg, notes)
     _write_info_xml(spec, pkg)
     pages = {(row["file"], tag): row["page"] for row in expected for tag in row.pop("tags", [])}
     for d in defects:
@@ -402,10 +454,15 @@ def render(spec: PackageSpec, out: Path, defects: list[dict]) -> Path:
                 "path": t.path,
                 "present": t.present,
                 "in_composition": t.in_composition,
+                **({} if t.developed else {"developed": False}),
             }
             for t in spec.toms
         ],
     }
+    if spec.version:
+        sheets = len(expected)
+        gt["profile"] = {"version": spec.version, **spec.profile, "sheets": sheets}
+        gt["notes"] = notes
     (out / "ground_truth.json").write_text(json.dumps(gt, ensure_ascii=False, indent=1), encoding="utf-8")
     with (out / "pages.jsonl").open("w", encoding="utf-8") as f:
         for row in expected:
@@ -413,7 +470,7 @@ def render(spec: PackageSpec, out: Path, defects: list[dict]) -> Path:
     return out
 
 
-def _render_tom(spec: PackageSpec, tom: TomSpec, out: Path) -> list[dict]:
+def _render_tom(spec: PackageSpec, tom: TomSpec, out: Path, notes: list[dict]) -> list[dict]:
     path = out / tom.path
     path.parent.mkdir(parents=True, exist_ok=True)
     c = new_canvas(path, tom.title, spec.org)
@@ -423,31 +480,89 @@ def _render_tom(spec: PackageSpec, tom: TomSpec, out: Path) -> list[dict]:
         if not sh.keep:
             continue
         page_no += 1
-        s = Sheet(c, sh.paper, sh.landscape)
-        s.frame()
-        if sh.kind == "title":
-            _title_page(s, spec, tom)
+        s = Sheet(c, sh.paper, sh.landscape, sh.style)
+        placed = _place(s, sh)
+        if sh.kind in ("appendix", "estimate"):
+            _loose(s, sh)
         else:
-            s.title_block(TitleValues(sh.form, sh.graphs, sh.signatures, sh.changes), grid=spec.grid)
-            _body(s, sh)
+            s.frame()
+            if sh.margin:
+                s.margin_graphs(sh.margin)
+            if sh.kind == "title":
+                _title_page(s, spec, tom)
+            else:
+                s.title_block(TitleValues(sh.form, sh.graphs, sh.signatures, sh.changes), grid=spec.grid)
+                _body(s, sh)
+        if placed:
+            c.restoreState()
         c.showPage()
-        rows.append(
-            {
-                "file": tom.path,
-                "page": page_no,
-                "kind": sh.kind,
-                "form": sh.form,
-                "paper": sh.paper,
-                "graphs": {str(k): v for k, v in sh.graphs.items()},
-                "signatures": [list(x) for x in sh.signatures if any(x)],
-                "tags": sh.tags,
-            }
-        )
+        if sh.rotate:
+            c.setPageRotation(0)  # поворот reportlab держит и на следующих страницах
+        row = {
+            "file": tom.path,
+            "page": page_no,
+            "kind": sh.kind,
+            "form": sh.form,
+            "paper": sh.page or sh.paper,
+            "graphs": {str(k): v for k, v in sh.graphs.items()},
+            "signatures": [list(x) for x in sh.signatures if any(x)],
+            "tags": sh.tags,
+        }
+        if spec.version:
+            row.update(_layout(sh))
+            notes += [{**n, "file": tom.path, "page": page_no} for n in sh.truth]
+        rows.append(row)
     c.save()
+    notes += [{**n, "file": tom.path, "page": None} for n in tom.truth]
     return rows
 
 
-def _render_composition(spec: PackageSpec, out: Path) -> list[dict]:
+def _layout(sh: SheetSpec) -> dict:
+    """Что эталону описи нужно знать о раскладке листа v1: формат листа при уменьшении, повороты."""
+    out: dict = {}
+    if sh.page:
+        out.update({"sheet": sh.paper, "scale": round(sh.scale, 4)})
+    if sh.rotate:
+        out["rotate"] = sh.rotate
+    if sh.sideways:
+        out["sideways"] = sh.sideways
+    return out
+
+
+def _place(s: Sheet, sh: SheetSpec) -> bool:
+    """Положить лист на страницу: с уменьшением на страницу другого формата, с /Rotate или боком.
+
+    Координаты листа остаются миллиметрами листа: переход к странице — преобразованием холста.
+    """
+    c = s.c
+    if sh.page:
+        short, long_ = format_size(sh.page)
+        pw, ph = (long_, short) if sh.landscape else (short, long_)
+        c.setPageSize((pt(pw), pt(ph)))
+        c.saveState()
+        c.translate(pt((pw - s.w * sh.scale) / 2), pt((ph - s.h * sh.scale) / 2))  # по центру страницы
+        c.scale(sh.scale, sh.scale)
+        return True
+    angle = sh.rotate or sh.sideways
+    if not angle:
+        return False
+    if sh.rotate:
+        # reportlab считает размер страницы видимым и при /Rotate 90 и 270 сам пишет MediaBox книжным:
+        # хранится h × w, при показе — w × h, как у листов, выгруженных САПР с поворотом
+        c.setPageRotation(sh.rotate)
+    else:
+        c.setPageSize((pt(s.h), pt(s.w)))  # лист боком: страница книжная, /Rotate нет
+    c.saveState()
+    if angle == 90:  # точка листа (x, y) ложится на страницу в (h - y, x): поворот против часовой
+        c.translate(pt(s.h), 0)
+        c.rotate(90)
+    else:  # 270: (y, w - x)
+        c.translate(0, pt(s.w))
+        c.rotate(-90)
+    return True
+
+
+def _render_composition(spec: PackageSpec, out: Path, notes: list[dict]) -> list[dict]:
     tom = spec.composition
     path = out / tom.path
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -455,8 +570,9 @@ def _render_composition(spec: PackageSpec, out: Path) -> list[dict]:
     header = ["Номер тома", "Обозначение", "Наименование", "Примечание"]
     widths = [15.0, 55.0, 95.0, 20.0]
     # первый лист — над формой 5, следующие — над формой 6
-    per_first = int((BOTTOM_FIRST - TOP) // ROW_H) - 2
-    per_next = int((BOTTOM_NEXT - TOP) // ROW_H) - 2
+    first, following = text_bottoms(spec.text_style)
+    per_first = int((first - TOP) // ROW_H) - 2
+    per_next = int((following - TOP) // ROW_H) - 2
     chunks = [rows_all[:per_first]]
     rest = rows_all[per_first:]
     while rest:
@@ -465,7 +581,7 @@ def _render_composition(spec: PackageSpec, out: Path) -> list[dict]:
     c = new_canvas(path, tom.title, spec.org)
     expected = []
     for i, chunk in enumerate(chunks, start=1):
-        s = Sheet(c, "A4", False)
+        s = Sheet(c, "A4", False, spec.text_style)
         s.frame()
         if i == 1:
             graphs = {1: tom.designation, 5: tom.title, 6: "П", 8: str(len(chunks)), 9: spec.org_short, 26: "А4"}
@@ -489,6 +605,21 @@ def _render_composition(spec: PackageSpec, out: Path) -> list[dict]:
                 "signatures": [list(x) for x in signs if any(x)],
             }
         )
+        for t in spec.toms:
+            if not t.developed and [t.number, t.designation, t.title, "Не разрабатывается"] in chunk:
+                notes.append(
+                    {
+                        "kind": "not_developed",
+                        "file": tom.path,
+                        "page": i,
+                        "designation": t.designation,
+                        "section": t.section,
+                        "code": t.code,
+                        "subsection": t.numbers[0] if t.code == "ИОС" else None,
+                        "expected": "manual",
+                        "why": "раздел условный: «Не разрабатывается» в «Составе ПД», тома нет — это не дефект",
+                    }
+                )
     c.save()
     return expected
 
@@ -518,16 +649,35 @@ def _body(s: Sheet, sh: SheetSpec) -> None:
             if b[0] == "p":
                 y, _ = s.paragraphs(x0, y, x1 - x0, 290, [b[1]], PARA_SIZE)
             else:
-                _kind, widths, header, rows, _tag = b
-                y = s.table(x0, y + 2, widths, header, rows, ROW_H) + 2
+                _kind, widths, header = b[:3]
+                y = s.table(x0, y + 2, widths, header, _styled_rows(b), ROW_H) + 2
     elif sh.kind == "drawing":
         _drawing(s, sh)
 
 
+def _styled_rows(b: tuple) -> list[list[str]]:
+    """Строки таблицы, как их пишет организация: обозначение нормы или название показателя ТЭП (v1).
+
+    В описании пакета остаются канонические значения: по ним дефекты находят, что портить.
+    """
+    rows = b[3]
+    if len(b) < 6:
+        return rows
+    if b[4] == "norms":
+        return [[r[0], b[5].format(code=r[1]) if r[1].startswith(("СП", "ГОСТ")) else r[1], *r[2:]] for r in rows]
+    if b[4] == "tep":
+        return [[b[5].get(r[0], r[0]), *r[1:]] for r in rows]
+    return rows
+
+
 def _drawing(s: Sheet, sh: SheetSpec) -> None:
     """Условный чертёж: координационные оси, контур здания, помещения; ведомость — на первом листе."""
+    form = s.profile.forms[3]
+    stamp_left = s.w - s.profile.frame["right"] - form.width
     x_right = s.w - 5 - 185 - 10 if sh.register else s.w - 15
-    x0, y0, x1, y1 = 35.0, 30.0, max(x_right, 120.0), s.h - 5 - 55 - 15
+    if sh.above:
+        x_right = min(x_right, stamp_left - 10)
+    x0, y0, x1, y1 = 35.0, 30.0, max(x_right, 120.0), s.h - s.profile.frame["bottom"] - form.height - 15
     s.text_in((x0, x1, 15, 24), sh.drawing or "", 11)
     nx, ny = 6, 4
     for i in range(nx):
@@ -547,8 +697,52 @@ def _drawing(s: Sheet, sh: SheetSpec) -> None:
         s.line(a, b, c_, d, 0.7)
     if sh.register:
         rx = s.w - 5 - 185
-        s.text_in((rx, s.w - 5, 12, 20), "Ведомость графической части", 9)
+        title = "Ведомость графической части" + (" (продолжение)" if sh.register_more else "")
+        s.text_in((rx, s.w - 5, 12, 20), title, 9)
         s.table(rx, 22.0, [15.0, 140.0, 30.0], ["Лист", "Наименование", "Примечание"], sh.register, 7.0)
+    if sh.above:  # таблица вплотную над основной надписью (и над графой 27, если она есть)
+        title, widths, header, rows = sh.above
+        top = s.h - s.profile.frame["bottom"] - form.height
+        if sh.graphs.get(27):
+            top += form.graphs[27][2]
+        height = (len(rows) + 1) * 6.0
+        x = s.w - s.profile.frame["right"] - sum(widths)
+        s.text_in((x, x + sum(widths), top - height - 7, top - height - 1), title, 8)
+        s.table(x, top - height, widths, header, rows, 6.0)
+    if sh.footnotes:  # «Примечания» — внизу слева, под осями, не заходя на основную надпись
+        from reportlab.lib.utils import simpleSplit
+
+        y = y1 + 8
+        for note in sh.footnotes:
+            for ln in simpleSplit(note, FONT, 7.5, pt(stamp_left - 40)):
+                if y > s.h - 8:
+                    return
+                s.text(30.0, y, ln, 7.5)
+                y += 3.6
+
+
+def _loose(s: Sheet, sh: SheetSpec) -> None:
+    """Лист без рамки и основной надписи: приложение ИРД (текст или скан) или сметная форма."""
+    if sh.image is not None:
+        from zerocycle.bench.bulk import scan_image
+
+        s.c.drawImage(ImageReader(_jpeg(sh.image, scan_image)), 0, 0, pt(s.w), pt(s.h))
+        return
+    y = 20.0
+    for i, ln in enumerate(sh.lines):
+        s.text(20.0 if i else s.w / 2, y, ln, 11 if i == 0 else 9.5, "left" if i else "center")
+        y += 9.0 if i == 0 else 5.6
+    for b in sh.blocks:
+        _kind, widths, header, rows, _tag = b[:5]
+        y = s.table(10.0, y + 2, widths, header, rows, ROW_H) + 2
+    if sh.kind == "estimate" and sh.drawing:
+        s.text(s.w - 10, s.h - 6, sh.drawing, 8, "right")  # колонтитул сметной программы
+
+
+def _jpeg(variant: int, make) -> object:
+    import io
+
+    return io.BytesIO(make(variant))
 
 
 def _xy(s: Sheet, x: float, y: float) -> tuple[float, float]:

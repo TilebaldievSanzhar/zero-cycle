@@ -16,8 +16,8 @@ from zerocycle.extract.designation import interpret, parse
 from zerocycle.extract.titleblock import find_title_block
 from zerocycle.ingest.files import SourceFile, open_package
 from zerocycle.ingest.pde import read_info_xml
-from zerocycle.ingest.pdf import iter_pdf
-from zerocycle.model import Designation, Document, Media, Package, Page
+from zerocycle.ingest.pdf import PdfPage, iter_pdf
+from zerocycle.model import Designation, Document, Media, Package, Page, TitleBlock
 from zerocycle.packs import Codebook, Context
 from zerocycle.units import paper_format
 
@@ -56,7 +56,8 @@ def _document(f: SourceFile, ctx: Context) -> Document:
     if f.media != Media.pdf:
         return doc
     try:
-        for p in iter_pdf(f.abs_path):
+        for raw in iter_pdf(f.abs_path):
+            p, tb = read_sheet(raw, ctx)
             doc.pages.append(
                 Page(
                     number=p.number,
@@ -65,12 +66,24 @@ def _document(f: SourceFile, ctx: Context) -> Document:
                     paper=paper_format(p.width, p.height),
                     landscape=p.width > p.height,
                     has_text=p.has_text,
-                    title_block=find_title_block(p, ctx),  # без текста — хотя бы рамка по линиям
+                    turn=p.turn,
+                    title_block=tb,
                 )
             )
     except Exception as e:  # повреждённый файл не должен ронять опись пакета
         doc.issues.append(f"PDF не читается: {type(e).__name__}: {e}")
     return doc
+
+
+def read_sheet(p: PdfPage, ctx: Context) -> tuple[PdfPage, TitleBlock | None]:
+    """Основная надпись листа; без текста — хотя бы рамка по линиям.
+
+    Лист боком без /Rotate: повёрнутый вариант берётся, только если основная надпись находится лишь на нём.
+    Вертикальный текст бывает и на ровном листе — поле для подшивки у чертежа с текстом в кривых."""
+    tb = find_title_block(p, ctx)
+    if tb is None and p.turned is not None and (turned := find_title_block(p.turned, ctx)):
+        return p.turned, turned
+    return p, tb
 
 
 def _link_pde(pkg: Package, cb: Codebook) -> None:

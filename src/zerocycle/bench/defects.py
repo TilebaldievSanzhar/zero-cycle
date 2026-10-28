@@ -94,7 +94,7 @@ def _d02(spec, rng, used):
         "D02",
         tom,
         tag=_tag(drawings[0], "D02"),
-        missing_sheet=k + 1,
+        missing_sheet=int(drawings[k].graphs[7]),  # при сквозной нумерации тома — не k + 1
         sheets_declared=len(drawings),
         missing_name=drawings[k].drawing,
     )
@@ -184,7 +184,8 @@ def _d10(spec, rng, used):
     tom = rng.choice(cands)
     firsts = [s for s in tom.sheets if s.keep and s.form in (3, 5) and s.signatures]
     sh = rng.choice(firsts)
-    i, field_ = rng.choice([(next(j for j, r in enumerate(sh.signatures) if r[0] == "Н. контр."), "name"), (0, "date")])
+    # строка нормоконтроля — предпоследняя (bench.generator._signs): подпись роли у шаблонов разная
+    i, field_ = rng.choice([(len(sh.signatures) - 2, "name"), (0, "date")])
     role, name, date = sh.signatures[i]
     sh.signatures[i] = (role, "", date) if field_ == "name" else (role, name, "")
     used.add(tom.designation)
@@ -209,7 +210,7 @@ def _f01(spec, rng, used):
     for sh in sheets[k:]:
         sh.graphs[7] = str(int(sh.graphs[7]) + 1)
     used.add(tom.designation)
-    return _rec("F01", tom, tag=_tag(sheets[k], "F01"), after_sheet=k, jumps_to=k + 2)
+    return _rec("F01", tom, tag=_tag(sheets[k], "F01"), after_sheet=k, jumps_to=int(sheets[k].graphs[7]))
 
 
 def _f02(spec, rng, used):
@@ -290,7 +291,12 @@ def _f07(spec, rng, used):
 
 def _f08(spec, rng, used):
     """Формат в графе 26 не совпадает с размером листа."""
-    cands = [(t, s) for t in _free(spec, used) for s in _sheets(t, "drawing") if s.paper == "A3"]
+    cands = [
+        (t, s)
+        for t in _free(spec, used)
+        for s in _sheets(t, "drawing")
+        if s.paper == "A3" and not (s.page or s.rotate or s.sideways)  # лист 1:1 без поворота
+    ]
     if not cands:
         return None
     tom, sh = rng.choice(cands)

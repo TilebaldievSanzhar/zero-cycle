@@ -2,6 +2,7 @@
 
 zerocycle scan <пакет> [-j kz] [--org org.toml] [--json out.json]   опись: файлы, листы, основные надписи, обозначения
 zerocycle gen <папка> [--seed 1] [--count 5]       засеянные пакеты с эталоном (--clean — без дефектов)
+zerocycle gen <папка> --v1 [--heldout] [--small]   генератор v1: 300–1 500 листов, шаблоны организаций
 zerocycle designation <обозначение> ... [-j kz]    разбор обозначений по справочнику юрисдикции
 zerocycle remarks <заключение.pdf | папка> ...     замечания из заключений экспертизы РК, категории и замер H1
 zerocycle check <пакет> [-j kz] [--work new]       проверка пакета правилами юрисдикции: находки с якорями
@@ -70,9 +71,20 @@ def _gen(args: argparse.Namespace) -> int:
 
     codes = [c.strip() for c in args.codes.split(",")] if args.codes else None
     for seed in range(args.seed, args.seed + args.count):
-        out = generate(seed, Path(args.out), mode="clean" if args.clean else "auto", codes=codes)
+        out = generate(
+            seed,
+            Path(args.out),
+            mode="clean" if args.clean else "auto",
+            codes=codes,
+            version=1 if args.v1 else 0,
+            split="heldout" if args.heldout else "dev",
+            size="small" if args.small else "full",
+        )
         gt = json.loads((out / "ground_truth.json").read_text(encoding="utf-8"))
-        print(f"{out}: дефектов {len(gt['defects'])} ({', '.join(d['id'] for d in gt['defects']) or 'чистый'})")
+        extra = ""
+        if prof := gt.get("profile"):
+            extra = f" · шаблон {prof['template']} ({prof['split']}), листов {prof['sheets']}"
+        print(f"{out}: дефектов {len(gt['defects'])} ({', '.join(d['id'] for d in gt['defects']) or 'чистый'}){extra}")
     return 0
 
 
@@ -218,6 +230,9 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--count", type=int, default=1)
     g.add_argument("--clean", action="store_true", help="без дефектов")
     g.add_argument("--codes", help="явный список дефектов: D01,D03,F02")
+    g.add_argument("--v1", action="store_true", help="генератор v1 (шаг 0.4b): объём и шаблоны организаций")
+    g.add_argument("--heldout", action="store_true", help="v1: отложенная выборка — в разработке не открывать")
+    g.add_argument("--small", action="store_true", help="v1: маленький пакет (~100 листов) для отладки")
     g.set_defaults(func=_gen)
 
     d = sub.add_parser("designation", help="разбор обозначений")
