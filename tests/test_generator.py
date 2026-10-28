@@ -10,7 +10,7 @@ from zerocycle.bench.generator import build
 from zerocycle.packs import context
 from zerocycle.scan import scan
 
-CODES = ["D03", "F02", "F03", "F08", "D09", "F09", "F06", "F07", "D07"]
+CODES = ["D03", "F01", "F02", "F03", "F08", "D09", "F09", "F06", "F07", "D07"]
 
 
 @pytest.fixture(scope="module")
@@ -83,6 +83,7 @@ def test_defects_are_visible_in_scan(corpus):
 
     assert page(defects["D03"]).title_block.get(1) == defects["D03"]["actual"]
     assert page(defects["F02"]).title_block.get(8) == defects["F02"]["actual"]
+    assert page(defects["F01"]).title_block.get(7) == str(defects["F01"]["jumps_to"])
     assert page(defects["F03"]).title_block.get(6) == "Р"
     assert page(defects["F08"]).paper == "A2" and page(defects["F08"]).title_block.get(26) == "А3"
     for code in ("D09", "F09"):

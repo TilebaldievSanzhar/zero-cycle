@@ -113,7 +113,11 @@ def _d03(spec, rng, used):
         variants.append(expected.replace(spec.base, swapped, 1))
     other = rng.choice([c for c in ("АР", "КР", "ПБ", "ООС") if c != tom.code])
     variants.append(expected.replace(f"-{tom.code}", f"-{other}", 1))
-    variants.append(expected.rsplit(".", 1)[0] if expected.endswith((".ТЧ", ".ГЧ")) else expected + "1")
+    if not expected.endswith((".ТЧ", ".ГЧ")):
+        variants.append(expected + "1")
+    elif len(_sheets(tom, sh.kind)) > 1:
+        # хвост — практика организации, не ГОСТ: снятый хвост виден, только когда рядом есть другие листы части
+        variants.append(expected.rsplit(".", 1)[0])
     actual = rng.choice([v for v in variants if v != expected])
     sh.graphs[1] = actual
     used.add(tom.designation)
@@ -188,17 +192,24 @@ def _d10(spec, rng, used):
 
 
 def _f01(spec, rng, used):
-    """Пропуск в нумерации листов текстовой части."""
-    cands = _free(spec, used, lambda t: len(_sheets(t, "text")) >= 3)
+    """Пропуск в нумерации листов документа: текстовой или графической части тома, где листов три и больше.
+
+    Текстовые части в генераторе короткие (один-два листа), поэтому дефект чаще ложится на графическую часть.
+    """
+
+    def parts(t: TomSpec) -> list[list[SheetSpec]]:
+        return [p for p in (_sheets(t, "text"), _sheets(t, "drawing")) if len(p) >= 3]
+
+    cands = _free(spec, used, lambda t: bool(parts(t)))
     if not cands:
         return None
     tom = rng.choice(cands)
-    texts = _sheets(tom, "text")
-    k = rng.randrange(1, len(texts))
-    for sh in texts[k:]:
+    sheets = rng.choice(parts(tom))
+    k = rng.randrange(1, len(sheets))
+    for sh in sheets[k:]:
         sh.graphs[7] = str(int(sh.graphs[7]) + 1)
     used.add(tom.designation)
-    return _rec("F01", tom, tag=_tag(texts[k], "F01"), after_sheet=k, jumps_to=k + 2)
+    return _rec("F01", tom, tag=_tag(sheets[k], "F01"), after_sheet=k, jumps_to=k + 2)
 
 
 def _f02(spec, rng, used):
