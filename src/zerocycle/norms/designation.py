@@ -61,6 +61,8 @@ _YEAR_REST = re.compile(r"\s{1,3}(\d{1,3})(?!\d)")
 _DASH_REST = re.compile(rf"\s{{1,3}}-\s{{0,3}}({_NUMBER})")
 # «НТП РК 01-0» + «1-3.1(4.1)-2017», «НТП РК 01-01-3.1» + «(4.1)-2017»: продолжение — только если оно кончается годом
 _TAIL_REST = re.compile(r"\s{1,3}([(0-9][0-9IVX.()]*(?:-[0-9IVX.()]+)*-(?:19|20)\d{2})(?!\d)")
+# номер российского СП без года: «54.13330», «6.13130», «256.1325800», «484.1311500»
+_RU_SP = re.compile(r"\d+\.\d{5,7}")
 
 
 @dataclass(frozen=True)
@@ -80,9 +82,10 @@ class NormDesignation:
         """Каноническая запись: год до 2000 — двумя цифрами, как принято («ГОСТ 21.101-97»), позже — четырьмя."""
         if self.year is None:
             return f"{self.kind} {self.number}"
-        if self.kind == "СП" and re.fullmatch(r"\d+\.\d{5}", self.number):  # СП 54.13330.2016
+        if self.kind == "СП" and _RU_SP.fullmatch(self.number):  # СП 54.13330.2016, СП 256.1325800.2016
             return f"{self.kind} {self.number}.{self.year}"
-        year = f"{self.year % 100:02d}" if self.year < 2000 else str(self.year)
+        short = self.year < 2000 or self.kind == "СанПиН"  # «СанПиН 2.1.3684-21» — год двумя цифрами и после 2000
+        year = f"{self.year % 100:02d}" if short else str(self.year)
         return f"{self.kind} {self.number}-{year}"
 
 
@@ -111,7 +114,7 @@ def _canon_kind(raw: str) -> str:
 
 def split_year(kind: str, body: str) -> tuple[str, int | None]:
     """Номер и год редакции: «1.02-03-2022» → («1.02-03», 2022), «1.02-03» → без года, «3.05.04-85» → 1985."""
-    if kind == "СП" and (m := re.fullmatch(r"(\d+\.\d{5})\.(\d{4})", body)):  # российские СП: «54.13330.2016»
+    if kind == "СП" and (m := re.fullmatch(rf"({_RU_SP.pattern})\.(\d{{4}})", body)):  # «54.13330.2016»
         return m.group(1), int(m.group(2))
     head, sep, tail = body.rpartition("-")
     if not sep or not tail.isdigit():

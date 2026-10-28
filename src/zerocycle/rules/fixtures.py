@@ -18,12 +18,13 @@ from zerocycle.rules.context import Context
 _BOX = (400.0, 700.0, 924.0, 840.0)  # рамка основной надписи А3 в пт — для якорей фикстур
 
 
-def title_block(graphs: Mapping[int, str], form: int = 3, signatures: Iterable[tuple[str, str]] = ()) -> TitleBlock:
+def title_block(graphs: Mapping[int, str], form: int = 3, signatures: Iterable[tuple[str, ...]] = ()) -> TitleBlock:
+    """Основная надпись фикстуры; строка подписи — (роль, фамилия) или (роль, фамилия, дата)."""
     return TitleBlock(
         form=form,
         bbox=_BOX,
         graphs=dict(graphs),
-        signatures=[SignRow(role=role, name=name, date="", bbox=_BOX) for role, name in signatures],
+        signatures=[SignRow(role=r[0], name=r[1], date=r[2] if len(r) > 2 else "", bbox=_BOX) for r in signatures],
         method="grid",
         confidence=1.0,
     )
@@ -54,7 +55,9 @@ def case(pkg: Package, texts: Mapping[tuple[str, int], str] | None = None, **par
 
 
 def run_fixture(rule: Rule, fixture: Fixture) -> list[str]:
-    """Расхождения фикстуры с ожиданием; пустой список — фикстура зелёная."""
+    """Расхождения фикстуры с ожиданием; пустой список — фикстура зелёная. Каждый исход проходит и через гейт."""
+    from zerocycle.rules.engine import finding, gate  # движок импортирует пакеты правил, а они — фикстуры
+
     fc = fixture.build()
     ctx = Context(fc.package, texts=fc.texts, params=fc.params)
     outcomes = list(rule.check(ctx))
@@ -64,6 +67,9 @@ def run_fixture(rule: Rule, fixture: Fixture) -> list[str]:
         for status, n in fixture.expect.items()
         if got.get(status, 0) != n
     ]
+    for o in outcomes:
+        if why := gate(rule, finding(rule, o, ctx), ctx):
+            problems.append(f"{fixture.name}: гейт задержал «{o.message[:60]}»: {why}")
     by_item = {o.item: o.status for o in outcomes if o.item}
     for item, status in fixture.items.items():
         if by_item.get(item) != status:

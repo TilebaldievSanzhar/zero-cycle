@@ -173,7 +173,11 @@ def _name_case(*names: str, opz: str | None = None, pb_graph1: str | None = None
 def object_name_consistent(ctx: Context) -> Iterator[Outcome]:
     values = _stamp_names(ctx)
     if not values:
-        yield Outcome(Status.cannot_check, "Нет основных надписей с читаемым наименованием объекта (графы 2 и 1)")
+        yield Outcome(
+            Status.cannot_check,
+            "Нет основных надписей с читаемым наименованием объекта (графы 2 и 1)",
+            values={"graphs": [2, 1]},
+        )
         return
     groups = _groups(values)
     declared = _declared_name(ctx)
@@ -233,7 +237,7 @@ def _stage_case(*docs_stages: tuple[str, list[str]]):
 
 @rule(
     "core.stage.consistent",
-    version="0.1.0",
+    version="0.2.0",
     title="Стадия одна во всём документе и пакете",
     family=Family.formatting,
     kind="consistency",
@@ -251,6 +255,12 @@ def _stage_case(*docs_stages: tuple[str, list[str]]):
     fixtures=(
         Fixture("одна стадия", _stage_case(("АР.pdf", ["РП", "РП"]), ("ВК.pdf", ["РП", "P.П"])), {Status.ok: 1}),
         Fixture("чужая стадия на листе", _stage_case(("ВК.pdf", ["РП", "ЭП", "РП"])), {Status.violated: 1}),
+        Fixture(
+            "поровну листов в документе — чужая та, что не как у пакета",
+            _stage_case(("АР.pdf", ["П", "П"]), ("ТБЭ.pdf", ["П", "Р"])),
+            {Status.violated: 1, Status.manual: 0},
+            items={"ТБЭ.pdf:Р": Status.violated},
+        ),
         Fixture(
             "эскизный проект целиком — не ошибка",
             _stage_case(
@@ -277,13 +287,15 @@ def stage_consistent(ctx: Context) -> Iterator[Outcome]:
         if stage:
             by_doc[d.path].append((stage, d, p, tb))
     if not by_doc:
-        yield Outcome(Status.cannot_check, "Нет основных надписей со стадией (графа 6)")
+        yield Outcome(Status.cannot_check, "Нет основных надписей со стадией (графа 6)", values={"graph": 6})
         return
+    overall = Counter(s for sheets in by_doc.values() for s, *_ in sheets)
     doc_stage: dict[str, str] = {}
     bad = 0
     for path, sheets in by_doc.items():
         counts = Counter(s for s, *_ in sheets)
-        major, n_major = counts.most_common(1)[0]
+        # поровну листов — стадия документа та, что у пакета: «П» и «Р» на двух листах тома ПД — лист «Р» чужой
+        major, n_major = max(counts.items(), key=lambda kv: (kv[1], overall[kv[0]]))
         doc_stage[path] = major
         for stage, n in counts.items():
             if stage == major:
@@ -320,4 +332,124 @@ def stage_consistent(ctx: Context) -> Iterator[Outcome]:
             Status.ok,
             f"Стадия «{package_stage}» одна во всех документах",
             values={"stage": package_stage, "documents": len(doc_stage)},
+        )
+
+
+# --- наименование здания (графа 3) -------------------------------------------------------------------------------
+
+
+def _plain(name: str) -> str:
+    return " ".join(_PUNCT.sub(" ", to_cyrillic(name).lower().replace("ё", "е")).split())
+
+
+def _near(a: str, b: str) -> bool:
+    """Почти одно наименование — отличается номером или приписанной частью: след правки копированием.
+
+    «Жилой дом № 3» и «Жилой дом № 4», «Жилой дом № 3» и «Жилой дом № 3 (корп. 1)» — почти одно; «Котельная»
+    и «Жилой дом № 3» — разные здания одного пакета, это не ошибка.
+    """
+    pa, pb = _plain(a), _plain(b)
+    if re.sub(r"\d+", "#", pa) == re.sub(r"\d+", "#", pb):
+        return True
+    short, long_ = sorted((pa, pb), key=len)
+    return long_.startswith(short) and len(long_) - len(short) <= 20
+
+
+def _building_case(*docs_names: tuple[str, str]):
+    def build():
+        docs = [
+            doc(path, [page(i, {1: f"311-2026-{i}", 2: _TAUYSH, 3: name}) for i in range(1, 3)])
+            for path, name in docs_names
+        ]
+        return case(package(*docs))
+
+    return build
+
+
+_HOUSE = "Многоквартирный жилой дом № 3 со встроенными помещениями"
+
+
+@rule(
+    "core.building-name.consistent",
+    version="0.1.0",
+    title="Наименование здания в графе 3 одно во всех томах",
+    family=Family.consistency,
+    kind="consistency",
+    severity=Severity.major,
+    basis={
+        "ГОСТ 21.101-97": ("ГОСТ 21.101-97, прил. Д (графа 3)",),
+        "ГОСТ Р 21.101-2020": ("ГОСТ Р 21.101-2020, прил. Ж (графа 3)",),
+    },
+    why=(
+        "Том с другим номером дома или корпуса в графе 3 — том от соседнего объекта или не исправленная копия: "
+        "эксперт не может принять, что решения тома относятся к этому зданию."
+    ),
+    remark="В основной надписи тома {том} указать наименование здания «{стало}» вместо «{было}».",
+    evidence=("Каталог дефектов засеянного корпуса: F04 — наименование здания в томе отличается",),
+    fixtures=(
+        Fixture("одно", _building_case(("АР.pdf", _HOUSE), ("КР.pdf", _HOUSE), ("ОВ.pdf", _HOUSE)), {Status.ok: 1}),
+        Fixture(
+            "другой номер дома в одном томе",
+            _building_case(("АР.pdf", _HOUSE), ("КР.pdf", _HOUSE), ("ОВ.pdf", _HOUSE.replace("№ 3", "№ 4"))),
+            {Status.violated: 1},
+            items={"ОВ.pdf": Status.violated},
+        ),
+        Fixture(
+            "приписан корпус",
+            _building_case(("АР.pdf", _HOUSE), ("КР.pdf", _HOUSE), ("ОВ.pdf", f"{_HOUSE} (корп. 1)")),
+            {Status.violated: 1},
+        ),
+        Fixture(
+            "та же запись без сокращения — проверить",
+            _building_case(
+                ("АР.pdf", "Фельдшерско-акушерский пункт (ФАП)"),
+                ("КР.pdf", "Фельдшерско-акушерский пункт (ФАП)"),
+                ("ВК.pdf", "Фельдшерско -акушерский пункт"),
+            ),
+            {Status.violated: 0, Status.manual: 1},
+        ),
+        Fixture(
+            "другое здание того же пакета — не ошибка",
+            _building_case(("АР.pdf", _HOUSE), ("КР.pdf", _HOUSE), ("ТС.pdf", "Котельная")),
+            {Status.violated: 0, Status.ok: 1},
+        ),
+        Fixture("нет графы 3", lambda: case(package(doc("АР.pdf", 2))), {Status.cannot_check: 1}),
+    ),
+)
+def building_name_consistent(ctx: Context) -> Iterator[Outcome]:
+    by_doc: dict[str, Counter[str]] = defaultdict(Counter)
+    sheets: dict[tuple[str, str], list[tuple[Document, Page, TitleBlock]]] = defaultdict(list)
+    for value, d, p, tb in _sheets(ctx, 3):
+        by_doc[d.path][value] += 1
+        sheets[(d.path, value)].append((d, p, tb))
+    if not by_doc:
+        yield Outcome(
+            Status.cannot_check, "Нет основных надписей с наименованием здания (графа 3)", values={"graph": 3}
+        )
+        return
+    main = {path: counts.most_common(1)[0][0] for path, counts in by_doc.items()}
+    votes = Counter(_plain(v) for v in main.values())
+    top, n_top = votes.most_common(1)[0]
+    reference = next(v for v in main.values() if _plain(v) == top)
+    bad = 0
+    for path, value in sorted(main.items()):
+        if _plain(value) == top or n_top < 2 or not _near(value, reference):
+            continue
+        bad += 1
+        odd = sheets[(path, value)]
+        # другой номер дома или корпуса — другое здание; разница только в записи («… (ФАП)») — проверить
+        other = re.findall(r"\d+", _plain(value)) != re.findall(r"\d+", _plain(reference))
+        yield Outcome(
+            Status.violated if other else Status.manual,
+            f"«{path}»: в графе 3 «{value}», в остальных {n_top} документах — «{reference}»",
+            anchors=tuple(ctx.graph_anchor(d, p, tb, 3) for d, p, tb in odd[:MAX_ANCHORS]),
+            values={"document": path, "graph3": value, "expected": reference, "documents": n_top},
+            severity=None if other else Severity.minor,
+            item=path,
+        )
+    if not bad:
+        yield Outcome(
+            Status.ok,
+            f"Наименование здания согласовано в {n_top} документах",
+            values={"documents": n_top, "name": reference},
         )

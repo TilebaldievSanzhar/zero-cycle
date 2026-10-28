@@ -1,7 +1,9 @@
-"""Команды движка правил для `zerocycle`: `check` — проверка пакета, `rules` — правила и их карточки.
+"""Команды движка правил для `zerocycle`: `check` — проверка пакета, `rules` — правила и их карточки,
+`recall` — сколько засеянных дефектов находят правила.
 
     zerocycle check <пакет> [-j kz] [--org org.toml] [--work new|reconstruction|capital_repair] [--json f] [--md f]
     zerocycle rules [-j kz] [--cards папка]
+    zerocycle recall <корпус> [--md f]
 
 Подключаются в `zerocycle.cli` вызовом `add_commands(sub)`; до этого — `python -m zerocycle.rules …`.
 """
@@ -152,3 +154,21 @@ def add_commands(sub: argparse._SubParsersAction) -> None:
     r.add_argument("-j", "--jurisdiction", choices=available(), default="ru")
     r.add_argument("--cards", help="записать карточки правил в папку")
     r.set_defaults(func=_rules)
+
+    m = sub.add_parser("recall", help="recall правил на засеянном корпусе и ложные тревоги")
+    m.add_argument("corpus", help="папка корпуса: seed-NNNN/package и ground_truth.json")
+    m.add_argument("-j", "--jurisdiction", choices=available(), default="ru")
+    m.add_argument("--md", help="отчёт в Markdown")
+    m.set_defaults(func=_recall)
+
+
+def _recall(args: argparse.Namespace) -> int:
+    from zerocycle.rules.recall import markdown as recall_md
+    from zerocycle.rules.recall import run_corpus
+
+    summary = run_corpus(Path(args.corpus), args.jurisdiction)
+    text = recall_md(summary)
+    if args.md:
+        Path(args.md).write_text(text, encoding="utf-8")
+    print(text)
+    return 0

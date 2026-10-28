@@ -49,13 +49,13 @@
 | `zerocycle.model` | типы: Package, Document, Page, TitleBlock, Fact, Anchor, NormRef, Rule, Finding, Decision, Run |
 | `zerocycle.ingest` | `pdf` (pdfplumber), `pde` (info.xml), `xlsx`, `xml` (XSD); позже `scan` (OCR) и `ifc` (отдельный процесс) |
 | `zerocycle.extract` | `titleblock`, `designation`, `normrefs`, `tep`, `registers` (ведомости, содержания, «Состав ПД») |
-| `zerocycle.norms` | разбор обозначений норм (`designation`), индекс действующих документов и вердикт по ссылке (`index`): действует, редакция заменена, заменён, нет в индексе, вид вне индекса; адаптеры: `agsk1` (РК, готов 28.10), `stroykompleks` (РФ, шаг 0.7) |
-| `zerocycle.rules` | реестр, применимость, исполнение, фикстуры, карточки; контекст проверки читает тексты страниц лениво (pypdfium2); grounding-гейт и список оснований `bases.toml` ([ADR 0005](adr/0005-rule-engine.md)) |
+| `zerocycle.norms` | разбор обозначений норм (`designation`), индекс действующих документов и вердикт по ссылке (`index`): действует, редакция заменена, заменён, нет в индексе, вид вне индекса; адаптеры: `agsk1` (РК, готов 28.10), `stroykompleks` (РФ, готов 28.10: индекс не исчерпывающий — «нет в реестре» ≠ «не действует»; курируемые замены добровольных стандартов — `packs/ru/replaced.toml`) |
+| `zerocycle.rules` | реестр, применимость, исполнение, фикстуры (проходят и через гейт), карточки; контекст проверки читает тексты страниц лениво (pypdfium2) и собирает из них факты: ссылки на нормы, строки «Состава ПД»; grounding-гейт и список оснований `bases.toml` ([ADR 0005](adr/0005-rule-engine.md)); `recall` — сверка находок с эталоном засеянного корпуса |
 | `zerocycle.packs` | `core`, `spds` по редакциям (2020, 97), `ru`, `kz`, позже `kg`; `context(юрисдикция, организация)` собирает для извлечения справочник шифров, профиль основных надписей и формы юрлиц; слой организации — TOML поверх пакета ([ADR 0003, дополнение 27.10](adr/0003-jurisdiction-packs.md#дополнение-27102026)) |
 | `zerocycle.report` | JSON, HTML, рендер фрагмента (pypdfium2); позже BCF и docx в форме ведомости замечаний |
 | `zerocycle.llm`, `zerocycle.prompts` | копия `secondkey.llm.run()` и модулей промптов |
 | `zerocycle.bench` | генератор засеянных пакетов, руки, сопоставление находок с эталоном, метрики |
-| `zerocycle.cli` | `check`, `bench`, `rules`, `norms` |
+| `zerocycle.cli` | `check`, `bench`, `rules`, `recall`, `norms` |
 | позже `api`, `worker`, `mcp`, `frontend/` | из second-key: FastAPI, taskiq, S3, роли, SSE, MCP-обвязка |
 
 ## Модель данных ядра

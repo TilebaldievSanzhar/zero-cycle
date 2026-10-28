@@ -16,9 +16,10 @@ from typing import Any
 
 import pypdfium2 as pdfium
 
-from zerocycle.model import Anchor, BBox, Document, Media, Package, Page, TitleBlock
+from zerocycle.extract.designation import parse
+from zerocycle.model import Anchor, BBox, Designation, Document, Media, Package, Page, TitleBlock
 from zerocycle.norms.designation import NormDesignation, find_designations
-from zerocycle.packs import available
+from zerocycle.packs import Codebook, available
 from zerocycle.packs import context as pack_context
 
 # Редакция СПДС по юрисдикции — пока общий контекст юрисдикции не отдаёт её сам (параллельный рефакторинг)
@@ -35,6 +36,19 @@ _WORK = (
 class NormRefHit:
     designation: NormDesignation
     anchor: Anchor
+
+
+@dataclass
+class Listed:
+    """Строка ведомости «Состав проектной документации»: обозначение тома, лист ведомости и сама строка."""
+
+    designation: Designation
+    anchor: Anchor
+    line: str
+
+
+# «Состав проектной документации» (ГОСТ Р 21.101-2020, 8.1.6), «Состав проекта», «Состав рабочего проекта» (РК)
+_COMPOSITION = re.compile(r"состав\w*\s+(?:проектной\s+документации|(?:рабочего\s+)?проекта)\b", re.IGNORECASE)
 
 
 _LIST_ITEM = re.compile(r"^\s*(?:\d{1,2}(?:\.\d{1,2})*[.)]|[-–—•·])\s")
@@ -153,6 +167,43 @@ class Context:
     def textless(self) -> list[tuple[Document, int]]:
         """Страницы без текстового слоя по описи (сканы, текст в кривых) — для честного «проверить вручную»."""
         return [(doc, p.number) for doc in self.pdfs() for p in doc.pages if not p.has_text]
+
+    @property
+    def codebook(self) -> Codebook:
+        return pack_context(self.jurisdiction).codebook
+
+    def composition_docs(self) -> list[Document]:
+        """Ведомость «Состав проектной документации»: документ «…-СП» или документ с таким наименованием."""
+        return [
+            d
+            for d in self.pdfs()
+            if (d.designation and d.designation.suffix == "СП") or (d.title and _COMPOSITION.search(d.title))
+        ]
+
+    def composition(self) -> list[Listed]:
+        """Тома, записанные в ведомости «Состав проектной документации»: обозначение в начале строки ведомости.
+
+        Ведомость — отдельный документ или страница с таким заголовком внутри тома (в РК — «Состав проекта» в ОПЗ).
+        Своё обозначение ведомости («…-СП») и содержаний томов («…-С») в основной надписи — не строки ведомости.
+        """
+        cb = self.codebook
+        own = {d.path for d in self.composition_docs()}
+        out: list[Listed] = []
+        seen: set[str] = set()
+        for d in self.pdfs():
+            for page in self.pages_of(d).values():
+                if d.path not in own and not _COMPOSITION.search(page.title):
+                    continue
+                for line in (s.strip() for s in page.text.splitlines()):
+                    for token in line.split()[:3]:
+                        des = parse(token.strip('«»"(),;:'), cb)
+                        if des is None or des.suffix or des.code is None or not re.search(r"\d", des.base):
+                            continue
+                        if des.core not in seen:
+                            seen.add(des.core)
+                            out.append(Listed(des, self.anchor(d, page.number, quote=line), line))
+                        break
+        return out
 
     def _load(self, doc: Document) -> None:
         self._loaded.add(doc.path)

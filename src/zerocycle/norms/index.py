@@ -25,6 +25,8 @@ class NormRecord(BaseModel):
     replaces: list[str] = Field(default_factory=list)  # канонические записи заменённых документов
     since: str | None = None  # дата введения, как в источнике: «01.08.2022»
     page: int | None = None  # страница источника — якорь для проверки человеком
+    source_id: int | None = None  # запись источника: id документа в реестре «Стройкомплекс.РФ»
+    basis: str | None = None  # основание записи, если это не сам индекс: «ГОСТ Р 21.101-2020, предисловие, п. 4»
 
 
 class NormIndex(BaseModel):
@@ -34,6 +36,9 @@ class NormIndex(BaseModel):
     sha256: str  # файла-источника
     covers: list[str]  # виды документов, которые индекс перечисляет полностью
     records: list[NormRecord]
+    # перечисляет ли индекс все действующие документы своих видов: АГСК-1 — да; реестр «Стройкомплекс.РФ» — нет,
+    # в нём только документы с обязательными требованиями, и «нет в реестре» — не довод против документа
+    exhaustive: bool = True
 
     @cached_property
     def _by_key(self) -> dict[tuple[str, str], list[NormRecord]]:

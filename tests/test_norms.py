@@ -20,6 +20,9 @@ from zerocycle.norms.index import NormIndex, NormRecord
         ("СНиП 3.05.04-85*", "СНиП 3.05.04-85", 1985),
         ("CH PK 1.02-03-2022", "СН РК 1.02-03-2022", 2022),  # латиница-двойник
         ("СП 54.13330.2016", "СП 54.13330.2016", 2016),
+        ("СП 256.1325800.2016", "СП 256.1325800.2016", 2016),  # серии 1325800 и 1311500 — семь цифр
+        ("СП 484.1311500.2020", "СП 484.1311500.2020", 2020),
+        ("СанПиН 2.1.3684-21", "СанПиН 2.1.3684-21", 2021),  # год СанПиН — двумя цифрами и после 2000
         ("ГОСТ 8020-90", "ГОСТ 8020-90", 1990),
         ("ГОСТ 21-501-2018", "ГОСТ 21.501-2018", 2018),  # опечатка в номере ГОСТ 21.501
         ("СП РК 4.02- 104-2013", "СП РК 4.02-104-2013", 2013),  # пробел после дефиса
@@ -163,3 +166,59 @@ def test_shipped_kz_index_sanity():
     assert index.verdict(parse_designation("СН РК 1.02-03-2011*")).status == "replaced"
     assert index.verdict(parse_designation("СП РК 2.04-01-2017")).status == "current"
     assert index.verdict(parse_designation("ГОСТ 21.101-97")).status == "not_covered"  # ГОСТ в АГСК-1 не входят
+
+
+def _registry_doc(id_, kind, number, status, title="Наименование", effective=44000):
+    return {
+        "id": id_,
+        "kindTitle": kind,
+        "number": number,
+        "status": status,
+        "title": title,
+        "effectiveDate": effective,
+    }
+
+
+def test_stroykompleks_index_editions_and_actualised_snip(tmp_path):
+    import json
+
+    from zerocycle.norms.stroykompleks import api_date, build
+
+    docs = [
+        _registry_doc(1, "Свод правил", "6.13130.2021", 50),
+        _registry_doc(2, "Свод правил", "6.13130.2025", 40, effective=46202),
+        _registry_doc(
+            3, "Свод правил", "54.13330.2022", 40, "Здания жилые. Актуализированная редакция СНиП 31-01-2003"
+        ),
+        _registry_doc(4, "Свод правил", "54.13330.2022", 50),  # прежняя версия той же записи — не замена
+        _registry_doc(5, "Свод правил", "535.1325800.202", 40),  # год без последней цифры — пропускаем
+        _registry_doc(6, "СанПиН", "2.1.3684-21", 40),
+        _registry_doc(7, "Федеральный закон", "384-ФЗ", 40),  # обозначается иначе — не в индексе
+    ]
+    path = tmp_path / "ntd.json"
+    path.write_text(json.dumps({"fetched": "2026-10-21", "total": 7, "documents": docs}), encoding="utf-8")
+    index = build(path)
+    assert not index.exhaustive and index.as_of == date(2026, 10, 21)
+    codes = {r.code: r for r in index.records}
+    assert set(codes) == {"СП 6.13130.2025", "СП 54.13330.2022", "СанПиН 2.1.3684-21"}
+    assert codes["СП 6.13130.2025"].replaces == ["СП 6.13130.2021"]
+    assert codes["СП 6.13130.2025"].since == "29.06.2026" == f"{api_date(46202):%d.%m.%Y}"
+    assert codes["СП 54.13330.2022"].replaces == ["СНиП 31-01-2003"]
+    assert index.verdict(parse_designation("СП 6.13130.2021")).status == "replaced"
+    assert index.verdict(parse_designation("СП 54.13330.2016")).status == "outdated_edition"
+    assert index.verdict(parse_designation("СНиП 31-01-2003*")).status == "replaced"
+    assert index.verdict(parse_designation("СП 54.13330")).status == "no_year"
+
+
+def test_shipped_ru_index_sanity():
+    from zerocycle.packs.ru.rules import registry
+
+    index = registry()
+    assert index.jurisdiction == "ru" and not index.exhaustive
+    assert len(index.records) >= 450
+    v = index.verdict(parse_designation("СП 3.13130.2009"))
+    assert v.status == "replaced" and v.current.code == "СП 3.13130.2026"
+    v = index.verdict(parse_designation("ГОСТ Р 21.1101-2013"))  # курируемая замена вне реестра
+    assert v.status == "replaced" and v.current.basis == "ГОСТ Р 21.101-2020, предисловие, п. 4"
+    assert index.verdict(parse_designation("СП 256.1325800.2016")).status == "current"
+    assert index.verdict(parse_designation("ГОСТ 21.002-2014")).status == "not_listed"  # добровольный — нет в реестре

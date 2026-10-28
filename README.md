@@ -29,7 +29,16 @@
 - ссылки на нормы по АГСК-1.
 
 Прогон на двух полных пакетах РК, прошедших экспертизу, — [docs/bench/CHECK_KZ.md](docs/bench/CHECK_KZ.md).
-Карточки правил — [docs/rules/](docs/rules/). Дальше — пакеты `spds` (0.6) и `ru` (0.7).
+Карточки правил — [docs/rules/](docs/rules/).
+
+28.10.2026 — пакеты `spds` (0.6) и `ru` (0.7), первые версии:
+- `spds`: нумерация листов, «Листов», формат листа, графа 1 по документу, даты подписей, «Состав ПД» ↔ тома,
+  GUID и имена файлов ПДЭ;
+- `ru`: разделы по ПП 87, ссылки на нормы по реестру «Стройкомплекс.РФ», ТЭП ПЗ ↔ тома;
+- `core`: наименование здания в графе 3.
+
+На отложенном засеянном корпусе (25 пакетов, 112 дефектов) recall 0,98, ложных «нарушено» нет
+([docs/bench/CHECK_RU.md](docs/bench/CHECK_RU.md)).
 
 ## Быстрый старт
 
@@ -43,6 +52,8 @@ uv run python -m zerocycle designation 2345-ИОС4.1.2-С 2345-AP # разбо�
 uv run python -m zerocycle remarks var/real/goszakup_kz --labels docs/bench/data/remarks_kz_labels.tsv  # замечания, H1
 uv run python -m zerocycle check var/real/goszakup_kz/17778737/files -j kz --md var/check/tauysh.md  # проверка правилами
 uv run python -m zerocycle rules -j kz --cards docs/rules  # правила юрисдикции и их карточки
+uv run python -m zerocycle recall var/corpus             # recall правил по эталону засеянного корпуса
+uv run python -X utf8 scripts/stroykompleks_index.py      # индекс норм РФ из выгрузки реестра «Стройкомплекс.РФ»
 ```
 
 Команда `zerocycle` работает и напрямую (`uv run zerocycle …`), но на Windows со Smart App Control её
@@ -68,9 +79,9 @@ uv run python -m zerocycle rules -j kz --cards docs/rules  # правила юр
 | `src/zerocycle/scan.py` | опись пакета |
 | `src/zerocycle/packs/` | данные пакетов и контекст `context(юрисдикция, организация)`: `spds` — основные надписи, марки и хвосты обозначений по редакциям (2020, 97), `ru` — разделы ПП 87, `kz` — шифры РК; слой организации — TOML поверх (`--org`); правила — с шага 0.5 |
 | `src/zerocycle/bench/` | генератор засеянных пакетов и каталог дефектов; руки сравнения и метрики — шаг 0.12 |
-| `src/zerocycle/rules/` | движок правил: правило = код + метаданные + фикстуры, контекст проверки, гейт, отчёт, карточки, команды `check` и `rules` |
-| `src/zerocycle/packs/<пакет>/rules.py` | правила пакетов: `core` — наименование и стадия, `spds` — графа 1 и подписи, `kz` — ИРД по Правилам КВЭ и ссылки по АГСК-1 (`agsk1.json`, `ird.toml`) |
-| `src/zerocycle/norms/` | обозначения норм, индекс действующих документов и вердикт по ссылке; сборка индекса из АГСК-1 (`scripts/agsk1_index.py`) |
+| `src/zerocycle/rules/` | движок правил: правило = код + метаданные + фикстуры, контекст проверки, гейт, отчёт, карточки, команды `check`, `rules` и `recall` (сверка с эталоном засеянного корпуса) |
+| `src/zerocycle/packs/<пакет>/rules.py` | правила пакетов: `core` — наименования объекта и здания, стадия; `spds` — графа 1, подписи, листы, «Состав ПД», ПДЭ; `kz` — ИРД по Правилам КВЭ и ссылки по АГСК-1 (`agsk1.json`, `ird.toml`); `ru` — разделы по ПП 87 (`pp87.toml`), ссылки по реестру (`stroykompleks.json`, `replaced.toml`), ТЭП |
+| `src/zerocycle/norms/` | обозначения норм, индекс действующих документов и вердикт по ссылке; сборка индекса из АГСК-1 (`scripts/agsk1_index.py`) и реестра «Стройкомплекс.РФ» (`scripts/stroykompleks_index.py`) |
 | `src/zerocycle/remarks/` | заключения экспертизы РК → пункты «Дополнений и изменений», кодбук категорий, замер H1 |
 | `docs/bench/data/` | разметка пунктов замечаний и перечень заключений, вошедших в замер |
 | `scripts/goszakup_kz_psd.py` | сбор реального слоя: ПСД из вложений закупок на goszakup.gov.kz (в `var/`, вне git) |
