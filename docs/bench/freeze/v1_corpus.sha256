@@ -1,0 +1,268 @@
+0481e669aaf29d0fc803584a0b968f653523c242cbaa68f037aac07aee0f9046 *./v1-heldout-1001/ground_truth.json
+f6f91dfc4e93f9eec053606c61cff17d2ebbafdd63164a3fd6f6f51859df93d7 *./v1-heldout-1001/package/00 СП/2026-032-СП.pdf
+c614934ba63826e7f8f7011490240d58dac97f6d54f1d6815f95446a57f44a83 *./v1-heldout-1001/package/01 ПЗ/2026-032-ПЗ.pdf
+bdf660021d8497b3363866e02fd35f4223070c00f0013e769d8f616c88d73e09 *./v1-heldout-1001/package/02 ПЗУ/2026-032-ПЗУ.pdf
+276fa4ea35b45e01d47edf0e045db90286e67917d2e503cf0bf04c61b7d448e5 *./v1-heldout-1001/package/03 АР/2026-032-АР.pdf
+d128d3e9230f35e3d0be3cea8bf68f0b64cace178eef1e4ba82229ef2098193f *./v1-heldout-1001/package/04 КР/2026-032-КР1.pdf
+cc54ea3901f7c7740df9a9b4ede8f2c413f5492c913e83d5b889a465ece88a8d *./v1-heldout-1001/package/04 КР/2026-032-КР2.pdf
+1dc455193771667eefeb5397ca4ee35c2d0e8158e12e2fb60c049d2d9ae0f215 *./v1-heldout-1001/package/04 КР/2026-032-КР3.pdf
+b707267435b1f9892d0e8a90c357c88c3f7587fdfdb8259a6d1eb39fa044d094 *./v1-heldout-1001/package/05 ИОС/05.2 ИОС2/2026-032-ИОС2.pdf
+b2732e73c25227c2a8bd4e2f0a3e5c94465db92dd0d278dcdb7e338abd3f25fe *./v1-heldout-1001/package/05 ИОС/05.3 ИОС3/2026-032-ИОС3.pdf
+6f255c1e00601a7d85298a696fbb0e83c8dd2952aafa3806ca74d11fe8736a76 *./v1-heldout-1001/package/05 ИОС/05.4 ИОС4/2026-032-ИОС4.1.pdf
+1e16ca7d92613d3377533bbfe28f6d1053220f92705917c50cb8f1224bbb05ca *./v1-heldout-1001/package/05 ИОС/05.4 ИОС4/2026-032-ИОС4.2.pdf
+0b397b7feaebde5a58aae6003b64cd800709fe977220b209896251e6b634bcc4 *./v1-heldout-1001/package/05 ИОС/05.5 ИОС5/2026-032-ИОС5.pdf
+2b5aaad32c3e68021622bbc1cbdbab3d8257f007c56692d3fd33af7bc3810174 *./v1-heldout-1001/package/05 ИОС/05.6 ИОС6/2026-032-ИОС6.pdf
+262eade8a28f8b048faf7680fe2e26e6bf9b186d6e8010ae7c17b183eb44622d *./v1-heldout-1001/package/06 ТХ/2026-032-ТХ.pdf
+7a7d2f76fd82f52516b0f08cc01766111ed5c428f32dc00da3ece0fb9e8113f1 *./v1-heldout-1001/package/07 ПОС/2026-032-ПОС.pdf
+46ef8c407a720189a4a9d5ed1d93713534c4955c324c51dc4fcfdaf9a37bdc11 *./v1-heldout-1001/package/08 ООС/2026-032-ООС.pdf
+93e1933563caba702049629696d17f0f7bc9903a173a4f88a1eeb2853d6f6eba *./v1-heldout-1001/package/09 ПБ/2026-032-ПБ.pdf
+f40c0e05ebea981e4aae6d03ed18ab37398e0a3de793f39c7dc7539d708dcb85 *./v1-heldout-1001/package/10 ТБЭ/2026-032-ТБЭ.pdf
+c1ff2a5a769b9af85d93754b134f99c6bebb21b94ccf691ef4ac9a8827a343f0 *./v1-heldout-1001/package/11 ОДИ/ОДИ_новый.pdf
+9f2ab4d9177aef98332a7dcc42269a0714299e03041468042646c3f47f14574c *./v1-heldout-1001/package/12 СМ/2026-032-СМ.pdf
+cfcac30371e0033889109fc4b61f0209f1c031ee7c652f0e4cf24bcddb181ef9 *./v1-heldout-1001/package/info.xml
+1a3a9d2b92c7086a63f8f0b24dc4b09925d2dfb1ccda5f25e0692b240f69aef7 *./v1-heldout-1001/pages.jsonl
+7140ebd5d79c8ba8dc57fd37de224b80bd2eef8383ba5c4251a0fb2810b27af2 *./v1-heldout-1002/ground_truth.json
+312d2cd424b0e58dcd27dd0179aa53313d284522cc8f3e39ba9b186374aead7a *./v1-heldout-1002/package/info.xml
+73c0597ae4f08d0972b179c26f322e9aa838bae3d1aab0c6c21bcdaec49c094b *./v1-heldout-1002/package/Раздел 0. СП/ЖК-71_2026-СП.pdf
+9868af8609db2089212ed7f734f693d7e07db116f7fe78839ae60e101e6e054a *./v1-heldout-1002/package/Раздел 1. ПЗ/ЖК-71_2026-ПЗ.pdf
+cf3a8cf2175b248a86c4986a64c7d1d88ac9b87990114995fde72079012a5b43 *./v1-heldout-1002/package/Раздел 10. ТБЭ/ЖК-71_2026-ТБЭ.pdf
+69ba92bc6f11b0e1e01d272eedcda5434994e63eec903f065a63069069a3a395 *./v1-heldout-1002/package/Раздел 11. ОДИ/ЖК-71_2026-ОДИ.pdf
+7acc5415bc7097d72fe8d96bdba4c4d7b29b7364bf2ce59e7989a924130afd1c *./v1-heldout-1002/package/Раздел 2. ПЗУ/ЖК-71_2026-ПЗУ.pdf
+4ce12d055567ede5925e98ed6b23d203ce3386936fae3af7e550549a02d87576 *./v1-heldout-1002/package/Раздел 3. АР/ЖК-71_2026-АР.pdf
+292f3842b5931eb88a5cf6231f714f4d853433b5a07945c27ffdaf41d71b56ca *./v1-heldout-1002/package/Раздел 4. КР/ЖК-71_2026-КР1.pdf
+7df9910f35f691f620afd97bfee5b915b85b5ac3ce1dbfdf2a779f9c555090f3 *./v1-heldout-1002/package/Раздел 4. КР/ЖК-71_2026-КР2.pdf
+b9b0876daf736697fdc90125c995e32d29bc2f3a7e04506c98702fa81953b042 *./v1-heldout-1002/package/Раздел 4. КР/ЖК-71_2026-КР3.pdf
+34066c8726b534c5758b0719c291089112a51cd2637cf17b8a1f0e1ec4aa7722 *./v1-heldout-1002/package/Раздел 4. КР/ЖК-71_2026-КР4.pdf
+6c066beddd14bf1c6bcf0727a9f9efac30472d698ff7806f877ea3b4de01a662 *./v1-heldout-1002/package/Раздел 5. ИОС/Подраздел 5.1. ИОС1/ЖК-71_2026-ИОС1.pdf
+7df858203e9efde2c6248f3db23e5e132865fcaad753093837f0a6997c36b66a *./v1-heldout-1002/package/Раздел 5. ИОС/Подраздел 5.2. ИОС2/ЖК-71_2026-ИОС2.pdf
+ca703635b44cdb7bdadfab3333bd3899840ed57313916bdfb1fe03d0e8eb5d91 *./v1-heldout-1002/package/Раздел 5. ИОС/Подраздел 5.3. ИОС3/ЖК-71_2026-ИОС3.pdf
+033bb1ac0100e005d27dad098eb3dbb3cd5753a4d330ef1bcd0878be1bc0f9e9 *./v1-heldout-1002/package/Раздел 5. ИОС/Подраздел 5.4. ИОС4/ЖК-71_2026-ИОС4.pdf
+68ee6a9bc26423ba115fe9f556bc30b4b8ba383d341a341f1bdcc81b30aa292b *./v1-heldout-1002/package/Раздел 5. ИОС/Подраздел 5.5. ИОС5/ЖК-71_2026-ИОС5.pdf
+c10c81bdfb101d3297cadf5e3e1135faed94d60babdaf578220e150a7837df61 *./v1-heldout-1002/package/Раздел 6. ТХ/ЖК-71_2026-ТХ.pdf
+90aa81b95f0e3a44d581c08f9e4ea26ce1b5f7d3cae567d3004fbc04e77cbda3 *./v1-heldout-1002/package/Раздел 7. ПОС/ЖК-71_2026-ПОС.pdf
+448e865db7f0e7a3d1483dc8f7a9b3c932a28ab8698ec6fcc90a8bca374dbe70 *./v1-heldout-1002/package/Раздел 9. ПБ/ЖК-71_2026-ПБ.pdf
+b8163afa92516368380d88bb7a533d03a2bb80c617475b6390b8adfe31f1d637 *./v1-heldout-1002/pages.jsonl
+f759dfbd82ea9ed1b3c394d2b14d215a128255acd2ced96f5b106c55a49a5e0a *./v1-heldout-1003/ground_truth.json
+6823a0d6327b3a8775a72ebf977c57446b3203f3bbb4fde77c5cca79116b6439 *./v1-heldout-1003/package/00 СП/2026-088-СП.pdf
+2bdbe2300f18ae8faaf625904aad4697b1bea3014347ac71b1c818cad439dba2 *./v1-heldout-1003/package/01 ПЗ/2026-088-ПЗ.pdf
+6db72af9dbf2a780f3b05d23fdfe4ec79d1d7551bfdd62dc043e22c02d3edc65 *./v1-heldout-1003/package/02 ПЗУ/2026-088-ПЗУ.pdf
+d8d6afa24f24e33ea8924df4084079b3a98881037be61afcd438798f262800f0 *./v1-heldout-1003/package/03 АР/2026-088-АР.pdf
+83a5bcf6c56bef0440a59f59ef169d9140f1690c5e2cb42c1eb4a619e593a99b *./v1-heldout-1003/package/04 КР/2026-088-КР1.pdf
+995c06bd1478a70e2b7b9668e4ab9d4f92a39d659e54f4a1560d205ca4bb4588 *./v1-heldout-1003/package/04 КР/2026-088-КР2.pdf
+a42424868f4c872d6844c4442e7c88ca9cdcdeac95f2d7f2f7954953bf72bfb7 *./v1-heldout-1003/package/04 КР/2026-088-КР3.pdf
+e3882ca33395fe9324849ef3e4b7b2c7fd15287ccc5db2f7d062a939c033fe7d *./v1-heldout-1003/package/04 КР/2026-088-КР4.pdf
+3ec049f0ae8fb61d79cb42a06a913f7da525821225a1fc66ec77d4b4b92ee4fd *./v1-heldout-1003/package/05 ИОС/05.1 ИОС1/2026-088-ИОС1.pdf
+d6202e21ab6ff0dbe8a3394afd381e471ab3366a6fb42f2f32bf7d1945827fdb *./v1-heldout-1003/package/05 ИОС/05.2 ИОС2/2026-088-ИОС2.pdf
+b9fdbec4dd461930e7391b816e98af74316158b7eebb83e5ebfe5a457650f9c4 *./v1-heldout-1003/package/05 ИОС/05.3 ИОС3/2026-088-ИОС3.pdf
+a66735bad3b2730d9bdba3e4fba179f55d850097735ab65d3cfafdaa3d698a2a *./v1-heldout-1003/package/05 ИОС/05.4 ИОС4/2026-088-ИОС4.1.pdf
+0704259f333f058e894a6b2ba3e3b1d87c16a86e7380d31921beaa8de12c939a *./v1-heldout-1003/package/05 ИОС/05.4 ИОС4/2026-088-ИОС4.2.pdf
+cd3bed51521409612ca8b1f22e9c256442aded19a4518b731b9d5ddcc37d554d *./v1-heldout-1003/package/05 ИОС/05.4 ИОС4/2026-088-ИОС4.3.pdf
+331e9bb80ce8af0b23addc24314d8784bb4891f7da825ae12d71f6e4924141e1 *./v1-heldout-1003/package/05 ИОС/05.5 ИОС5/2026-088-ИОС5.pdf
+b681320daaf76a38ec23cb848acd23440544c701c5a4a8cbf4646215a1d308b0 *./v1-heldout-1003/package/05 ИОС/05.6 ИОС6/2026-088-ИОС6.pdf
+c900879e7dd705f9ff552da14204729f2fb6dd48004d1d18947be891482fd331 *./v1-heldout-1003/package/07 ПОС/2026-088-ПОС.pdf
+4586459db180ba0f9c61faab06c5b0ad902b8802b1fad62b5e0bd8eda5028319 *./v1-heldout-1003/package/08 ООС/2026-088-ООС.pdf
+a0c357e17a55616c474bd88edab53776ebbe4b95f1a1b3b04d7c003c50cb421b *./v1-heldout-1003/package/10 ТБЭ/2026-088-ТБЭ.pdf
+c58a22d7a4c698b59f01285337f7f12b751dcf5de7e41be3323e7ff4901adb70 *./v1-heldout-1003/package/11 ОДИ/2026-088-ОДИ.pdf
+f1408029f96af584df77cd9581cb49cdaf07f996c4292dde61b44cb82f2462b9 *./v1-heldout-1003/package/info.xml
+3f5ca29450c888e9e60fb71c219980ed4085bc710477fef5b8e6be89767fc2dd *./v1-heldout-1003/pages.jsonl
+c7d036673a9b7f09a5d99d05cbfa7ef1897eab7a776021b8541521ee7e66572e *./v1-heldout-1004/ground_truth.json
+df629a3811e0fc47e1c142fe12fecc161c0935d1d98afa11c2c5ee4d67e73c3c *./v1-heldout-1004/package/info.xml
+35439c95fd4d86b918548cae6a04fdebe561b86e2cec366225d0ff97a397f804 *./v1-heldout-1004/package/Том 0/ЖК-84_2026-СП.pdf
+20af298ab5f1cd3ac33dbfeb94afb57d239e804f6a991128e1d380835218f63c *./v1-heldout-1004/package/Том 1/ЖК-84_2026-ПЗ.pdf
+c00426433e5101aa3cbcfe4c2e2c6af81ac709719a8271a00e2412f050ebf501 *./v1-heldout-1004/package/Том 10/ЖК-84_2026-ТБЭ.pdf
+16a69e902a59232ab4adc1fabeb1cff4746dc49ec8062b965d1e79042f30089e *./v1-heldout-1004/package/Том 11/ЖК-84_2026-ОДИ.pdf
+da03e4f383abca0ab24550c764dce8b3980115122a2166160ebb18987f01c2a8 *./v1-heldout-1004/package/Том 12/ЖК-84_2026-СМ.pdf
+cd11cda307bbae06a68d7956b13be2bf68b7b93acd944a29d6f3a7098e345ad7 *./v1-heldout-1004/package/Том 2/ЖК-84_2026-ПЗУ.pdf
+b48fea0b2fdfc16f43437470a7785f167a621e7352a974802bc6c54ca8c5e4f3 *./v1-heldout-1004/package/Том 3/ЖК-84_2026-АР.pdf
+fe4ff504b139eaf5c0d3fc24be95af4da01e9bd7deace0edbaa142b17ec2b104 *./v1-heldout-1004/package/Том 4/ЖК-84_2026-КР1.pdf
+609c25ab12f085b6e3fb7f35362c0450bff4e40a399c02abf046f62b98d85f49 *./v1-heldout-1004/package/Том 4/ЖК-84_2026-КР2.pdf
+7ca0ba460b07e24aa0a7721f0cb6fddf16182133ec510d457bbf29c8e35bff9e *./v1-heldout-1004/package/Том 4/ЖК-84_2026-КР3.pdf
+860b551489000b8e24666dac06aeb708060b86b17758e470f7ce802504a0df35 *./v1-heldout-1004/package/Том 5/Том 5.1/ЖК-84_2026-ИОС1.pdf
+e738646ae5ee8936f24a910213df02c49221e0f89c97fadc05fcb2212ba13594 *./v1-heldout-1004/package/Том 5/Том 5.2/ЖК-84_2026-ИОС2.pdf
+c57ccbc37fbfbd71068226d3d13f743a98699b9a5d5195013fa0f5e6cd8c63cf *./v1-heldout-1004/package/Том 5/Том 5.3/ЖК-84_2026-ИОС3.pdf
+053a3c9a7b6dc85cbf3dc45714da5670e8c37a4d813b891e5fd4b7d8a401bd0f *./v1-heldout-1004/package/Том 5/Том 5.4/ЖК-84_2026-ИОС4.pdf
+d0bd92b616748c0417b02ff49e9a490e9e655e5f54e77f4db1a4f5ebc7b57465 *./v1-heldout-1004/package/Том 5/Том 5.5/ЖК-84_2026-ИОС5.pdf
+205e6905a6b6b2c6dc99dadfae59dc2c5d715ab4f6579e123c51b3159bbed876 *./v1-heldout-1004/package/Том 5/Том 5.6/ЖК-84_2026-ИОС6.pdf
+3f738ae5913be5c77779cc41a3889c4847b8663a7dbb3585dbcfdfb951393256 *./v1-heldout-1004/package/Том 6/ЖК-84_2026-ТХ.pdf
+9f419fcdb9b56fe0b9c251b96d69623f30ab8061a14b428396025c3b72d1d7ae *./v1-heldout-1004/package/Том 7/ЖК-84_2026-ПОС.pdf
+8951e77f138ed58ac5368e58a094b172070ea0b1d3c96ede6d255f2b6ca1372f *./v1-heldout-1004/package/Том 8/ЖК-84_2026-ООС.pdf
+2590c853a6dd83c4bdb89fbcda174b100f0655f88690340ac71a2463258eeca3 *./v1-heldout-1004/package/Том 9/ЖК-84_2026-ПБ.pdf
+abcb79d59ca6efa6cd953a68f4594907215979df169436a3a60628e257fb25ba *./v1-heldout-1004/pages.jsonl
+3b4423a6632b1a66eee0b275acff7161304227b93594d940dba6200ee804c8a4 *./v1-heldout-1005/ground_truth.json
+cf14497d0e3b9617d6cec410a2a6252b886b21539a98cceda8761e07e8d2352c *./v1-heldout-1005/package/info.xml
+287ea0275e4d0bdd100e338d8589b52b09d39222b04f9a949ba43e535317b0c8 *./v1-heldout-1005/package/Раздел 0. СП/ЖК-37_2026-СП.pdf
+e855c54c2968a5055bf08ee4021a1ba0b810bee1bff3f70d2e0b6d679aa92a01 *./v1-heldout-1005/package/Раздел 1. ПЗ/ЖК-37_2026-ПЗ.pdf
+be0681da2ed92db090d5af01e4bc21de29dc418a8af10f03e3d022f27a6e1f17 *./v1-heldout-1005/package/Раздел 10. ТБЭ/ЖК-37_2026-ТБЭ.pdf
+fc181deb1e72ee7afefb2d96467263eee321b32a48fc05631ea0fecbf7d01e83 *./v1-heldout-1005/package/Раздел 11. ОДИ/ЖК-37_2026-ОДИ.pdf
+3ea664ac2427165b2f4115a86e7936abb1832522fe5a41a36145f968bdc45714 *./v1-heldout-1005/package/Раздел 12. СМ/ЖК-37_2026-СМ.pdf
+495f2ff0316722806b6061da9f1c56709eb091e268ae780bc2f4a3fd496add85 *./v1-heldout-1005/package/Раздел 2. ПЗУ/ЖК-37_2026-ПЗУ.pdf
+6d042db2cd1ea7d681fc62456292076923f2b3d15e4d6001a653a9bd6c2fb0a1 *./v1-heldout-1005/package/Раздел 3. АР/ЖК-37_2026-АР.pdf
+d82a9e5ec997d726e85855e10bcc8f1888f922b4d28bc9fbefc2d2298eb06fa5 *./v1-heldout-1005/package/Раздел 4. КР/ЖК-37_2026-КР1.pdf
+eb9331bdc140103614d40887d277b35a13d1ceb9ac68a06204d6e05470d417a9 *./v1-heldout-1005/package/Раздел 4. КР/ЖК-37_2026-КР2.pdf
+2c84ea7e27c210e2d0b11f3963f315163df5890aaba0c2d0dbcaeb121ce29c4b *./v1-heldout-1005/package/Раздел 4. КР/ЖК-37_2026-КР3.pdf
+c84c6b5b64ee73a1b63a1ab24c0f5481623c6f46faf5d20000d92b96658c9a67 *./v1-heldout-1005/package/Раздел 5. ИОС/Подраздел 5.1. ИОС1/ЖК-37_2026-ИОС1.pdf
+240363c958ddc0ceef0b2105768a58925163fcea4550d35fc840d45b06241612 *./v1-heldout-1005/package/Раздел 5. ИОС/Подраздел 5.2. ИОС2/ЖК-37_2026-ИОС2.pdf
+7d8dab8ed987b4312cc2f027103c7c3006dbab0f690ea51c8c5d149662204e0c *./v1-heldout-1005/package/Раздел 5. ИОС/Подраздел 5.3. ИОС3/ЖК-37_2026-ИОС3.pdf
+5471066452296a99e8a91b6676066df97a4e53f75d66c7890491ce215d352856 *./v1-heldout-1005/package/Раздел 5. ИОС/Подраздел 5.4. ИОС4/ЖК-37_2026-ИОС4.pdf
+651eb62563759c208f93e75600e5a01a38ca057a01605743bb9732ec1b1365d8 *./v1-heldout-1005/package/Раздел 5. ИОС/Подраздел 5.5. ИОС5/ЖК-37_2026-ИОС5.pdf
+74fe8a01cd97815096169d9c7b3fca88a3ad7eb660c5a9ad0487f2bae2cbb925 *./v1-heldout-1005/package/Раздел 5. ИОС/Подраздел 5.6. ИОС6/ЖК-37_2026-ИОС6.pdf
+8b9f280bc0e1f7f6c2cff140e923184b76b34adfcdb7168293924358e6e483a5 *./v1-heldout-1005/package/Раздел 6. ТХ/ЖК-37_2026-ТХ.pdf
+493aecaf1edc892b852e1e1961a84592aff805cd8e438ebd6e602883cecf15d2 *./v1-heldout-1005/package/Раздел 7. ПОС/ЖК-37_2026-ПОС.pdf
+2fb3f2493068619ec2a942a988e131002dbed6978dfaae8eb03796c6053e8776 *./v1-heldout-1005/package/Раздел 8. ООС/ЖК-37_2026-ООС.pdf
+988321e15eb69db8ed9c97182df9dcc958ad38af34c94424e3be77d85e1e5a75 *./v1-heldout-1005/package/Раздел 9. ПБ/ЖК-37_2026-ПБ.pdf
+eb4713d667f1f7b8debca98d3b6a80ec60ac533e3a491aeb563c797728c53fce *./v1-heldout-1005/pages.jsonl
+a30353002a98a2a4b10d9ed36c91ebe7ce8665c4d5641fdf6c198efa4712f600 *./v1-heldout-1006/ground_truth.json
+099b8619b838af59775bb51dde640ebd866ce3f1ddbf9e5c4a18368416e58e21 *./v1-heldout-1006/package/info.xml
+32444d6e330b653929c4708def478265158a506ea39ee9a81390703543127810 *./v1-heldout-1006/package/Том 0/П-25-26-СП.pdf
+53d545a399d05952791a0e81eb751df3f0bb3eade0f4ac174351be3285966ac3 *./v1-heldout-1006/package/Том 1/П-25-26-ПЗ.pdf
+b4fb07600614a74c9a49cfb9d0b461e190fba14dfa10b49ab9a3adb07e4e445e *./v1-heldout-1006/package/Том 10/П-25-26-ТБЭ.pdf
+76b88cd81fdb29661c816af5acd269ed352a036c82aaa310a6aacd19d0f7480f *./v1-heldout-1006/package/Том 11/П-25-26-ОДИ.pdf
+31b193359d7ae8903c08e9e340b968b23314b0326e586050c0cb0b761fe0b4ad *./v1-heldout-1006/package/Том 12/П-25-26-СМ.pdf
+a6e7f1e92977bdc47e118f222976123cb64f0323021034ab41802adb32bdd609 *./v1-heldout-1006/package/Том 2/П-25-26-ПЗУ.pdf
+fb4374f4983b9437f76faff1c2991115de4b1f76116245b1306a7aa7d9084018 *./v1-heldout-1006/package/Том 3/П-25-26-АР.pdf
+7544722e76bf1dcb024b577813211379e28b8ad25d69d3d114a28893242e2e8d *./v1-heldout-1006/package/Том 4/П-25-26-КР1.pdf
+36c9adfaa251daba1f38e695a7df602b3ef745883e2a34d3461675dc8d9dfa02 *./v1-heldout-1006/package/Том 4/П-25-26-КР2.pdf
+b984ef315a80290e39a35aff3e0cf1f248fb60cb388d264a96f11b3aafb6f78d *./v1-heldout-1006/package/Том 4/П-25-26-КР3.pdf
+b65f78468f32312ad86daac22fbb9377b6cc0e5a20df0af2d6bd6ed82c164308 *./v1-heldout-1006/package/Том 5/Том 5.1/П-25-26-ИОС1.pdf
+63f781057ba7a0ead71df809f0da7eee867ae809df1c1d6ab5b69c5b66d93bbe *./v1-heldout-1006/package/Том 5/Том 5.2/П-25-26-ИОС2.pdf
+33185bc84278d8f20ce883d9bda47da651c6995ad286b40f4a9e73695ac073b0 *./v1-heldout-1006/package/Том 5/Том 5.3/П-25-26-ИОС3.pdf
+f3294a75b23b1ec847f1889041e29eb2b897f69fc49cc70ade02e88f3909913b *./v1-heldout-1006/package/Том 5/Том 5.4/ИОС43_новый.pdf
+507f0ce852d8eb54c0a57069dbb0fea74436ac9223ae3e0c9ad6dd77d1302e41 *./v1-heldout-1006/package/Том 5/Том 5.4/П-25-26-ИОС4.1.pdf
+371074327123e62e1125b402df479c702c6996d615a2c7edee8a9c4e9f48be95 *./v1-heldout-1006/package/Том 5/Том 5.4/П-25-26-ИОС4.2.pdf
+7a7b69390f7ac217d52d37fe81ef2e12f09708f16c7cb526c055c33e8b7ec5b1 *./v1-heldout-1006/package/Том 5/Том 5.5/П-25-26-ИОС5.pdf
+ad62576bc5a6c13c331f7ccd479f22c935765af69e22c2d5bf366bb9129dc406 *./v1-heldout-1006/package/Том 5/Том 5.6/П-25-26-ИОС6.pdf
+9564d27945fbd2700d5b8b65674d4d56ce53ca9e16cf0d7edf6dd7f238dfcf29 *./v1-heldout-1006/package/Том 6/П-25-26-ТХ.pdf
+ded27afae7b61f7713a27e5079f22e7d8274d463f610662cbba3c7548c618cd7 *./v1-heldout-1006/package/Том 7/П-25-26-ПОС.pdf
+cdc5391601a70578f56824c92df60297375009abce6f2e97bf8374e6c5b4576c *./v1-heldout-1006/package/Том 8/П-25-26-ООС.pdf
+f7b7e94ffeed3c096407df5d15a687e47ed636fc2990b77a16d0e494bc2a9537 *./v1-heldout-1006/package/Том 9/П-25-26-ПБ.pdf
+fb4cb0a31e16594e0dc358d269bc7d100e493a23159247004cb6c6bf7f826536 *./v1-heldout-1006/pages.jsonl
+eec3add86e96685e827f6e9bddd338638fd86d334f721591eb44761b5a8a6e7e *./v1-heldout-1007/ground_truth.json
+3cc145865f5ea4f272bec4796321990daf8db3e768b962b85ddf4b52e834eef9 *./v1-heldout-1007/package/info.xml
+e9a1e5d610f3808508550e73c7512076d44bddda7d13821b8950ea271b092cea *./v1-heldout-1007/package/Раздел 0. СП/П-68-26-СП.pdf
+54a270a7fb863ffe3372505262eeccd48f0a2d8fd729ab062717aff87445ff8b *./v1-heldout-1007/package/Раздел 1. ПЗ/П-68-26-ПЗ.pdf
+d2e15eacaac8730dafa43fc7c882de594de232a117a9dc8a7661b64969ea526b *./v1-heldout-1007/package/Раздел 11. ОДИ/П-68-26-ОДИ.pdf
+8517452dbdce11a295b2fbabcb3a6343ce2a5f67582e0bf20997479a371f7930 *./v1-heldout-1007/package/Раздел 12. СМ/П-68-26-СМ.pdf
+5867d8c64ed8f92b3307b68045933b64f85dcda0e784d680cb0022f5faab8f6c *./v1-heldout-1007/package/Раздел 2. ПЗУ/П-68-26-ПЗУ.pdf
+1f5ca600131a5b1bfae2880cb7bab6d8121ef28b0d1750d8bc0e62b8d90429a6 *./v1-heldout-1007/package/Раздел 3. АР/П-68-26-АР.pdf
+c47f88b69ea767ea94adb60d2ef5832885bfa91bbdc5bbf221018d7892fac879 *./v1-heldout-1007/package/Раздел 4. КР/П-68-26-КР1.pdf
+f613ab71067598d5adce9fa3535a44ed3ffd1272605d2b4b71a78e9b61f8c5ec *./v1-heldout-1007/package/Раздел 4. КР/П-68-26-КР2.pdf
+04d8728af5e1fdd55ff14c0d0dfca820d93e8bb701b08dcd0ad9578359a39255 *./v1-heldout-1007/package/Раздел 4. КР/П-68-26-КР3.pdf
+73bff30d91fc87e4bcdf51ab34e4aca5318664ebddfff02b956bc168e5a9463e *./v1-heldout-1007/package/Раздел 5. ИОС/Подраздел 5.1. ИОС1/П-68-26-ИОС1.pdf
+67b96a6b021da285110a4c76d72353a83409dbfb278addfe015a4d7aaacdca1a *./v1-heldout-1007/package/Раздел 5. ИОС/Подраздел 5.2. ИОС2/П-68-26-ИОС2.pdf
+024e7cf7ef25aa50c9ce689495ac4e14b3c26d3bd0e5ebe248ea29ba70eebd79 *./v1-heldout-1007/package/Раздел 5. ИОС/Подраздел 5.3. ИОС3/П-68-26-ИОС3.pdf
+e0a5d46e149d8b1de164c4b7e0884cc2b1baaf9dcf05e0a5eeb320e99b510ad2 *./v1-heldout-1007/package/Раздел 5. ИОС/Подраздел 5.4. ИОС4/П-68-26-ИОС4.pdf
+823a8f29c6dc5f2b73c7bc103d4a51827f6b25cbc012055aaa3e05378456d729 *./v1-heldout-1007/package/Раздел 5. ИОС/Подраздел 5.5. ИОС5/П-68-26-ИОС5.pdf
+e93a5281ed9e69c236bb34825ca6f1846ed277a192bbe1c0b3d08ff894060062 *./v1-heldout-1007/package/Раздел 6. ТХ/П-68-26-ТХ.pdf
+1b09c9f3c8fc0e0b0f4ffeea5e4427873937ea63fedd03b90fbdd511c22d4466 *./v1-heldout-1007/package/Раздел 7. ПОС/П-68-26-ПОС.pdf
+188c90f512d47514bba8ef03f9f46102b8335ae0796384f15eac9505d0c46d11 *./v1-heldout-1007/package/Раздел 8. ООС/П-68-26-ООС.pdf
+ba2014587d1dd11fd042a54f9ae73fb23778f565cb3bf8dd8442623061d09208 *./v1-heldout-1007/package/Раздел 9. ПБ/П-68-26-ПБ.pdf
+b2944fad59ad393742cf267da2ee638c8d0b6e944d4b77f70f362759846ec1c8 *./v1-heldout-1007/pages.jsonl
+990a1b2e4ff61fca3bada60fbce2cdd43780cfb24427a575d540ca16b83a9ae1 *./v1-heldout-1008/ground_truth.json
+1bcf05cb45fa8b2c68d48e725eddffc0813b14ced3e16cd7f6bad0e20a15d325 *./v1-heldout-1008/package/info.xml
+73fa4077abc895b29422b50638ee5e38ccd08da1fe54f3f15fe5ed9353773c75 *./v1-heldout-1008/package/Раздел 0. СП/П-58-26-СП.pdf
+7834d86cfc9ad9b2ed91d0317b6c4f678ec86a6bad1065310c1786433c6a2451 *./v1-heldout-1008/package/Раздел 1. ПЗ/ПЗ_v2.pdf
+53f47fd10ee3cf7b211efcedad3b7116474953feb28e6865dc55e99461c9f1c2 *./v1-heldout-1008/package/Раздел 11. ОДИ/П-58-26-ОДИ.pdf
+f36b155649bfad529f6c229ef7ff2ad7c00f6c042122c0e735e34667d4e0d510 *./v1-heldout-1008/package/Раздел 12. СМ/П-58-26-СМ.pdf
+47af7a28ff81edd44009c593ed0f13b247a00a888b5152475a52e2daa6c75cd6 *./v1-heldout-1008/package/Раздел 3. АР/П-58-26-АР.pdf
+f2802591d654ca2be135b691fefd0497be66b031b9ceba1e84de2c2a0540fce6 *./v1-heldout-1008/package/Раздел 4. КР/П-58-26-КР1.pdf
+0ee39d6551f3d49a84660f6a5549314b236b4a6435cc43ac2ec6ddf0002abc2c *./v1-heldout-1008/package/Раздел 4. КР/П-58-26-КР2.pdf
+0fae6cad6150410b53b34c6123df06c4b88052c36f9d08ecf1eac6f1e1ed0e58 *./v1-heldout-1008/package/Раздел 4. КР/П-58-26-КР3.pdf
+f84bf8732218cb4d94b2965cecc5763b93e5d440888819f967dac39a4562bdae *./v1-heldout-1008/package/Раздел 5. ИОС/Подраздел 5.1. ИОС1/П-58-26-ИОС1.pdf
+91fdbaf843ee7df05b745fbe434acc4a0038b9a19ba6dd23c526de97149f4b2d *./v1-heldout-1008/package/Раздел 5. ИОС/Подраздел 5.2. ИОС2/П-58-26-ИОС2.pdf
+ffa27c12ae296c8e8380a30ceecfb59d16a46f94ee9fcb5420889c234d1db762 *./v1-heldout-1008/package/Раздел 5. ИОС/Подраздел 5.3. ИОС3/П-58-26-ИОС3.pdf
+49d0be3f9f41284d383de4e081a035d65ea877fa2705744dc22d4c85419e9a32 *./v1-heldout-1008/package/Раздел 5. ИОС/Подраздел 5.4. ИОС4/П-58-26-ИОС4.1.pdf
+b89c52636c9802a02e445b843a85116bff58dfffc4aff7b396bf715a3496ed86 *./v1-heldout-1008/package/Раздел 5. ИОС/Подраздел 5.4. ИОС4/П-58-26-ИОС4.2.pdf
+3f4866e3e0dcb5e2654e6542ac817bce418930044cdc5264062b395235299301 *./v1-heldout-1008/package/Раздел 5. ИОС/Подраздел 5.5. ИОС5/П-58-26-ИОС5.pdf
+cb7b2eba3f9246e466c662bfc7fc957a2139fa7aec6db1d6188fff26d07475d0 *./v1-heldout-1008/package/Раздел 5. ИОС/Подраздел 5.6. ИОС6/П-58-26-ИОС6.pdf
+b772edde8b469535618a983ab9a5bec6766dcd2d89b2d3f33f7ec3f82637ca6e *./v1-heldout-1008/package/Раздел 6. ТХ/П-58-26-ТХ.pdf
+42228a445612b15a7104a28af1f2aef645684197c72c332f5232c8a868d12332 *./v1-heldout-1008/package/Раздел 7. ПОС/П-58-26-ПОС.pdf
+84960c2df7f3252e03d6185ed5a7eb12c5eba355e06298de326289e2258da3a6 *./v1-heldout-1008/package/Раздел 8. ООС/П-58-26-ООС.pdf
+d56f3f472fb347ffb55cb6642745b96ce475ed908eb3404efb61f4b2a7fa12ac *./v1-heldout-1008/package/Раздел 9. ПБ/П-58-26-ПБ.pdf
+250ad454d275f9379e9d635dd4d334144b3098a742bee9fd58601b875d7ac6aa *./v1-heldout-1008/pages.jsonl
+072bd51e6ad81232b46ed5963cb9031adcae176162a2caf791aad15fbd0117a2 *./v1-heldout-1009/ground_truth.json
+0b8daa5b0384c8fe7a50ea368da8e53014db31d2390ca82acb91cf2c4b74652e *./v1-heldout-1009/package/info.xml
+7a5ac9fbb41d5253c0ab09a069ab03a3eff3961a86aa0677531a87932ed6bd17 *./v1-heldout-1009/package/Раздел 0. СП/П-77-26-СП.pdf
+3b8357cf769e87d7060811422ccaa6b58e651fea7bbb58525a3b4086c8b4d3ee *./v1-heldout-1009/package/Раздел 1. ПЗ/П-77-26-ПЗ.pdf
+e19be58cd89c86b4af8693a24b12b0408c3109e66c1ece6506a68c2f29ba122a *./v1-heldout-1009/package/Раздел 10. ТБЭ/П-77-26-ТБЭ.pdf
+0bda64e727a45e0f4d7b39865914c78368de4285afbf70de285f75c8d60c9e91 *./v1-heldout-1009/package/Раздел 2. ПЗУ/П-77-26-ПЗУ.pdf
+50b8df4c317e737fd8a1a4c4fc1910992b18c0388cc40098835f289691bee6c5 *./v1-heldout-1009/package/Раздел 3. АР/П-77-26-АР.pdf
+c43752ab0d2bde698fbe4127cec700cda64671c9045c3d7c9f2c71d35386667e *./v1-heldout-1009/package/Раздел 4. КР/П-77-26-КР1.pdf
+a5103ee47de42d12e177d9c46baed251c551bb1a5e27b0329a791ab3a79e264d *./v1-heldout-1009/package/Раздел 4. КР/П-77-26-КР2.pdf
+2efb79fa74bde253cc730eaa03c8c8b685b7d82069d5f9dafb8bdc10c40116a1 *./v1-heldout-1009/package/Раздел 4. КР/П-77-26-КР3.pdf
+0f46e35a18e89332670e73dbb3d9d60fe248136adc02c8a6268874476f7ce658 *./v1-heldout-1009/package/Раздел 4. КР/П-77-26-КР4.pdf
+25b995066798a03344419ad6061f7dea445caf3a82977019e3905db2d483a910 *./v1-heldout-1009/package/Раздел 5. ИОС/Подраздел 5.1. ИОС1/П-77-26-ИОС1.pdf
+69d00e22084767778e8d4efe54e5ef02ad73d5675c0995911de886b858ae3072 *./v1-heldout-1009/package/Раздел 5. ИОС/Подраздел 5.2. ИОС2/П-77-26-ИОС2.pdf
+70e599881b88d86cf9944de7ab0b1db91edc99d6f1411f412aa77847c1d93b1d *./v1-heldout-1009/package/Раздел 5. ИОС/Подраздел 5.3. ИОС3/П-77-26-ИОС3.pdf
+c6a635e1887206fbe004803d9f65b5446cab31c0f04cb1294b49e997d3d91a97 *./v1-heldout-1009/package/Раздел 5. ИОС/Подраздел 5.4. ИОС4/П-77-26-ИОС4.pdf
+5af70e8b335c2ffa65add81bf23c83184e90d686a9cf29ee294f4c0ea81675e0 *./v1-heldout-1009/package/Раздел 5. ИОС/Подраздел 5.5. ИОС5/П-77-26-ИОС5.pdf
+c13547642a42add13549f006e31120bd54b01865fd8cea0dc737a78875119998 *./v1-heldout-1009/package/Раздел 5. ИОС/Подраздел 5.6. ИОС6/П-77-26-ИОС6.pdf
+439caf298ae7105506e4878b15c12ba2ac278d9036139d35e93ac605df100015 *./v1-heldout-1009/package/Раздел 6. ТХ/П-77-26-ТХ.pdf
+7e7651ff3b9cddb5e39e3c420a660e6b01a59b109897cb71c5636d60a9fd6409 *./v1-heldout-1009/package/Раздел 7. ПОС/П-77-26-ПОС.pdf
+d7bd7747c0fbd591b2e509076c096b11ddc70d17c5a4c94628e592e287c3a317 *./v1-heldout-1009/package/Раздел 8. ООС/П-77-26-ООС.pdf
+f924e0b03f2874c59a716e2d1ca7b707475b102581bf0bc45eaf404d6bcf1a07 *./v1-heldout-1009/pages.jsonl
+0a0f13d47cc71c2f8766af602c554c60ca13f5f95d85e93ce774321593cb9092 *./v1-heldout-1010/ground_truth.json
+dd609419feef19cf0befc62f6366c17af690569532bea1ebe141f1bb73b91a05 *./v1-heldout-1010/package/info.xml
+2889fcfa4a56f37e0368a2ac776bda65835d95a4af6de8fee8129ddf79889936 *./v1-heldout-1010/package/Том 0/ЖК-61_2026-СП.pdf
+0a161dd2de2d397fa81f95192fde0822ab3f97d65f9fa7c96e4fcef2ca1b1715 *./v1-heldout-1010/package/Том 1/ЖК-61_2026-ПЗ.pdf
+e0fcb43990ce6c562e767a0df6e7df43f0808b928d9cf93edbeec084ac5fb591 *./v1-heldout-1010/package/Том 10/ЖК-61_2026-ТБЭ.pdf
+140ac0f24bddccd48f2d80464ec450839333d6b20864054fb67b2b9a1142587e *./v1-heldout-1010/package/Том 11/ЖК-61_2026-ОДИ.pdf
+2e4b1a1355209389eb033d01bd00f570d70304702bfdfcbc6c8fc5f8e5916228 *./v1-heldout-1010/package/Том 12/ЖК-61_2026-СМ.pdf
+2b8b4ab23c1b9f79031a29bb6a023485e40edba73488c88549bcf8b4185d75ca *./v1-heldout-1010/package/Том 2/ЖК-61_2026-ПЗУ.pdf
+760707b0575fa26b3d07ad328b8c08df556d8c1274b7415dd993401951b9b0ae *./v1-heldout-1010/package/Том 3/ЖК-61_2026-АР.pdf
+3f3ec54297931c2f3c866e5e08b0e119d7fb62744d10a6efd78b815de4e1e782 *./v1-heldout-1010/package/Том 4/ЖК-61_2026-КР1.pdf
+d828eb8ab6f75a3e3a38314a0219df44db10273418c1992622215112529eab29 *./v1-heldout-1010/package/Том 4/ЖК-61_2026-КР2.pdf
+b3fd0da27903a11d89573d33f2c340a472dff40bfa5c825e61ea094492910303 *./v1-heldout-1010/package/Том 5/Том 5.1/ЖК-61_2026-ИОС1.pdf
+c972ad460300a3c21238cf581972d4fd431407dcd5db2cc644428105dbffbefa *./v1-heldout-1010/package/Том 5/Том 5.2/ЖК-61_2026-ИОС2.pdf
+31a639693f143058b3773d200541b55d9c53edfc263cda445910791239d1432d *./v1-heldout-1010/package/Том 5/Том 5.3/ЖК-61_2026-ИОС3.pdf
+8d6e8df6df9d854d2b5c4f40a61264da51849a235bee6dab68c4f67804b5216f *./v1-heldout-1010/package/Том 5/Том 5.4/ЖК-61_2026-ИОС4.1.pdf
+59cd8beb2fc008bc0c26cd188f20bf02a7c6f79786aad7edd2912e043f0eb760 *./v1-heldout-1010/package/Том 5/Том 5.4/ЖК-61_2026-ИОС4.2.pdf
+e70adbd2e533328e34893461bb4a22616312dd8010cd139aa826005c6a93a478 *./v1-heldout-1010/package/Том 5/Том 5.5/ЖК-61_2026-ИОС5.pdf
+a096e76c78c7634313a1a19792e5b621d1c87c77e593d09fa6b6362256a45967 *./v1-heldout-1010/package/Том 7/ЖК-61_2026-ПОС.pdf
+ef2aaa80f5d07e4aed59f91cbda4d43b1e365780205f17c8cafdd17b0d18aa14 *./v1-heldout-1010/package/Том 8/ЖК-61_2026-ООС.pdf
+c2269d7286987881c691521940c9c09c6cd58aafe0af6c68ce102ce2d97cd7be *./v1-heldout-1010/package/Том 9/ЖК-61_2026-ПБ.pdf
+194683186d27ca5f3791dcb022018a1abb4dc5cf33fff1cae8a2a8d6afc04ede *./v1-heldout-1010/pages.jsonl
+9e91b57ecc8ce465c9e4d6931052850ecf0e182937b7b25ff2f5519dd85cb176 *./v1-heldout-1011/ground_truth.json
+a49882f25785f24a688afba1da2313ca8b83f6c33afbf942f60fef9946bd00a7 *./v1-heldout-1011/package/00 СП/ЖК-91_2026-СП.pdf
+1a7027cbd8844f5d67c709d5a1563abf6ed43c46fb428682bee325c1d38617d7 *./v1-heldout-1011/package/01 ПЗ/ЖК-91_2026-ПЗ.pdf
+99a9f9cbd0a30241f146fae2bbad6d27ae1bcaf2e0320ee75193ab0069ac79b5 *./v1-heldout-1011/package/02 ПЗУ/ЖК-91_2026-ПЗУ.pdf
+8b7709000e6ce6975704ff5db728751ce02cdad03886e448f91977a1436d73d9 *./v1-heldout-1011/package/03 АР/ЖК-91_2026-АР.pdf
+67e9c8b856008e77144ca03d88af57546d6c98249dad00c1648963d64fa341a4 *./v1-heldout-1011/package/04 КР/ЖК-91_2026-КР1.pdf
+b50d18bf164178ae006d5ca2bb699ea51e3e12426cf0b69dbdf8801df2549733 *./v1-heldout-1011/package/04 КР/ЖК-91_2026-КР2.pdf
+eddccdd3259cac24319aeb688c1a50c38bfeafe8bb6b35ae4c653e0ed75f7226 *./v1-heldout-1011/package/05 ИОС/05.1 ИОС1/ЖК-91_2026-ИОС1.pdf
+8ee3ec8f5d10d34e4c91e4baaf232d1b7c79c4f482163d5227a72a4c989ce7a6 *./v1-heldout-1011/package/05 ИОС/05.2 ИОС2/ЖК-91_2026-ИОС2.pdf
+9072f1bc2b5fba5da5babaf1fb3dc5bc1e0a0c4cf4e2c88c409c283a1b3028e5 *./v1-heldout-1011/package/05 ИОС/05.3 ИОС3/ЖК-91_2026-ИОС3.pdf
+25ad4ca5f76be037b63ce8d45494f81d63f875b61519f5dbc4c28f776a9b6b93 *./v1-heldout-1011/package/05 ИОС/05.4 ИОС4/ЖК-91_2026-ИОС4.1.pdf
+33f59455b81d0115b532b3603cbdf93b0a6999f1773432ddefa72da24a44a95e *./v1-heldout-1011/package/05 ИОС/05.4 ИОС4/ЖК-91_2026-ИОС4.2.pdf
+5edb1f735c63a4ce15074929296c424fb02891d4efab5db0a67d67ca54f5cbf5 *./v1-heldout-1011/package/05 ИОС/05.4 ИОС4/ЖК-91_2026-ИОС4.3.pdf
+91bce8d0d81c8c785954dae1d62bc93e4527b52db0bb71afbd0930591ab01015 *./v1-heldout-1011/package/05 ИОС/05.5 ИОС5/ЖК-91_2026-ИОС5.pdf
+e88804f4e1cdb4f9bf7d5889241295861073a94b0ae0c437a2331989dc5cab9f *./v1-heldout-1011/package/06 ТХ/ЖК-91_2026-ТХ.pdf
+1243b155b8dfe7577559c0638339cc1d9896fd68a9bb9a49277dac77c07d6b2f *./v1-heldout-1011/package/07 ПОС/ЖК-91_2026-ПОС.pdf
+7139dcdc79ec1c2fe778a3946a7c97fb20fdde544ed88bc2c23564f0c958f986 *./v1-heldout-1011/package/08 ООС/ЖК-91_2026-ООС.pdf
+b8fab92bc5837366bfccf71ae226d62f75c5c1226f96ef3d36c319a616f09ff5 *./v1-heldout-1011/package/09 ПБ/ЖК-91_2026-ПБ.pdf
+29a1dd508875203d1e94421dce31699cd7192bca85916384aa17a7f2f92d26db *./v1-heldout-1011/package/10 ТБЭ/ТБЭ_v2.pdf
+adf80552cb94a2992b9ebac3f3d04c3b88edcb366a0318ac6c4c457bf6f0758d *./v1-heldout-1011/package/11 ОДИ/ЖК-91_2026-ОДИ.pdf
+b16cc533e3dc235e7869337fca194279c2ada3c6c9469eed1a727a7ab793387e *./v1-heldout-1011/package/12 СМ/ЖК-91_2026-СМ.pdf
+f35eb1f5213e359173a30461ccc610f991529718d82f42f831621a100749194a *./v1-heldout-1011/package/info.xml
+c0f0f33227bd3e89c3cfc90e9207cb235b37130702504cf53f514de83664b2cb *./v1-heldout-1011/pages.jsonl
+27a7ffc0f914936e83feec74aa66a64d58f07f4a499cbbdccb89211813104bc1 *./v1-heldout-1012/ground_truth.json
+61d116621206a1320b57c9b8196ae1ca3edc27208db65ff3cf30729bf9bc5d45 *./v1-heldout-1012/package/00 СП/2026-095-СП.pdf
+9c7d619ae42dd82b22050d67ca496eb54bf360e23326383e3923eab4a2be199a *./v1-heldout-1012/package/01 ПЗ/2026-095-ПЗ.pdf
+eabeb5033bca22f3684df580684c134cf1832f24a730c9a14a5ffff98b74ac4e *./v1-heldout-1012/package/02 ПЗУ/2026-095-ПЗУ.pdf
+23ae22b273ad7e7775258da05ddbbc35c219f2777c3b72ca5de87a050761f254 *./v1-heldout-1012/package/03 АР/2026-095-АР.pdf
+c618da7bd3388b89246e49563dbb65fd506474b5276f3bbaf2d2df3ceb65df69 *./v1-heldout-1012/package/04 КР/2026-095-КР1.pdf
+46eb346c2b1b7f1f5f4fe759f566b309e1015915ca148b0f17dab2badab2b02f *./v1-heldout-1012/package/04 КР/2026-095-КР2.pdf
+14069f5b059e1b08dd647431725d6797faff0e3fd178dc49dd8c0577ec5a5dff *./v1-heldout-1012/package/04 КР/2026-095-КР3.pdf
+f9fb90d1ab774604a47d5beb3ca01cd5301ed6f4b542949674bae3a40f03c837 *./v1-heldout-1012/package/05 ИОС/05.1 ИОС1/2026-095-ИОС1.pdf
+b56614d1cc0e95ce2b30431e14b2c012f84f5720cadaf64c807644829c323c89 *./v1-heldout-1012/package/05 ИОС/05.2 ИОС2/2026-095-ИОС2.pdf
+a43acb882d960bd99d42a08fa422d14d35d0eeff6dffd7b2b2f16795d261ffd4 *./v1-heldout-1012/package/05 ИОС/05.3 ИОС3/2026-095-ИОС3.pdf
+ed165d66e20a3ef4a41211bfd0aaa458b92811633da8e5937731a76e095906e2 *./v1-heldout-1012/package/05 ИОС/05.4 ИОС4/2026-095-ИОС4.1.pdf
+2e05818c4c27dd09e458d672b4fd162b13f9f1ac483a71e388f719aba31fd2e5 *./v1-heldout-1012/package/05 ИОС/05.4 ИОС4/2026-095-ИОС4.2.pdf
+e2244b919905088aea324af1164671ad8b8f96e11152d77c6cfae8035f520b92 *./v1-heldout-1012/package/05 ИОС/05.5 ИОС5/2026-095-ИОС5.pdf
+e3d2a72b05ca507e0876249234dac2c56f52fcb094b13ea9baf94a2de07bd57a *./v1-heldout-1012/package/05 ИОС/05.6 ИОС6/2026-095-ИОС6.pdf
+907becaec6164a4ce2832eb15e8335848f7ca5775b760fe1b626081e37903cfe *./v1-heldout-1012/package/06 ТХ/2026-095-ТХ.pdf
+8b4c547a2ed8d2e498494e6169fc74863e93349a769a82cc196ebd02c0810a0e *./v1-heldout-1012/package/07 ПОС/2026-095-ПОС.pdf
+478061eadd0b0d6a35ad40fdcfd5a2c3a81def3983307c9c2c52a9013d66815d *./v1-heldout-1012/package/08 ООС/2026-095-ООС.pdf
+43df5477d6c77831c224db647370adef026d90f03dc865913f0d80aeab67dea8 *./v1-heldout-1012/package/09 ПБ/2026-095-ПБ.pdf
+0bd74047964575eef61376c6629be35d87c99ee2892f20781f90998845b36d88 *./v1-heldout-1012/package/12 СМ/2026-095-СМ.pdf
+d9e78b922b1c9f8b4a527dc19074566fc8b93cebe4d59dab3025576a313c561a *./v1-heldout-1012/package/info.xml
+81023ee31a5dcf2959d985b023a9bf6556d657c8e0c03b6f3e975a88edc08859 *./v1-heldout-1012/pages.jsonl
