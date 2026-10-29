@@ -7,6 +7,8 @@
 
     python scripts/bench_v1.py            # всё: скилы A1 → руки → оценка
     python scripts/bench_v1.py --score    # только оценка того, что есть
+
+Оценку и H5 (bench/h5.py — после заморозки) считать кодом main: PYTHONPATH=src.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import time
 import traceback
 from pathlib import Path
 
+from zerocycle.bench.h5 import report_h5
 from zerocycle.bench.pilot import author_skills, limit_hit, report_pilot, run_pilot, score_pilot, wait_for_room
 
 REPO = Path(r"C:\Projects\development_challenge\zero-cycle")  # итоги и корпус — в var/ основного репозитория
@@ -106,7 +109,8 @@ def main() -> int:
         LOCK.unlink(missing_ok=True)
     rows = score_pilot(CORPUS, OUT)
     report_pilot(OUT, rows, sum(r["sheets"] for r in rows) / max(len(rows), 1))
-    log(f"оценка: {OUT / 'report.md'}")
+    report_h5(OUT, rows)
+    log(f"оценка: {OUT / 'report.md'}, H5: {OUT / 'h5.md'}")
     return 0
 
 

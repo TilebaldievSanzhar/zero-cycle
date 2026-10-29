@@ -128,10 +128,12 @@ def _bench_author(args: argparse.Namespace) -> int:
 
 
 def _bench_score(args: argparse.Namespace) -> int:
+    from zerocycle.bench.h5 import report_h5
     from zerocycle.bench.pilot import report_pilot, score_pilot
 
     rows = score_pilot(Path(args.corpus), Path(args.out))
     print(report_pilot(Path(args.out), rows, args.mean_sheets))
+    print(report_h5(Path(args.out), rows))
     return 0
 
 

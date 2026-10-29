@@ -436,6 +436,7 @@ def score_pilot(corpus: Path, out: Path) -> list[dict]:
             answer = json.loads(answer_path.read_text(encoding="utf-8"))
             s, metrics = score(truth, answer.get("findings", []))
             row.update(metrics, seeded=s.seeded, found=len(s.found), findings=s.findings, notes_by_kind=s.on_notes)
+            row.update(violated=s.violated, keys=sorted(s.keys))  # для H5 (bench/h5.py)
             keys.setdefault((r["package"], r["arm"]), []).append(s.keys)
         rows.append(row)
     for row in rows:
