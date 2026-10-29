@@ -355,16 +355,25 @@ EXTRA_DRAWINGS = {
 }
 
 
-def drawing_names(sec: dict, key: str, count: int) -> list[str]:
-    """Наименования листов: сначала листы раздела из v0, дальше — по образцам с номерами."""
+def drawing_names(sec: dict, key: str, count: int, floors: int = 99) -> list[str]:
+    """Наименования листов: сначала листы раздела из v0, дальше — по образцам с номерами.
+
+    Номер этажа в наименовании — не выше этажности здания: «План эвакуации 22-го этажа» в 16-этажном доме —
+    расхождение с АР, которого никто не засевал. Руки пилота его находили, и верная находка шла в ложные тревоги.
+    """
     names = list(sec.get("drawings", []))[:count]
     patterns = EXTRA_DRAWINGS.get(key, ["Лист {k}"])
     k = 2
     while len(names) < count:
-        p = patterns[(len(names) - len(sec.get("drawings", []))) % len(patterns)]
-        names.append(p.format(k=k, mark=f"{3 * k:.3f}".replace(".", ",")))
-        if (len(names) - len(sec.get("drawings", []))) % len(patterns) == 0:
-            k += 1
+        before = len(names)
+        usable = [p for p in patterns if not ("этажа" in p and k > floors)]
+        for p in usable:
+            name = p.format(k=k, mark=f"{3 * k:.3f}".replace(".", ","))
+            if len(names) < count and name not in names:
+                names.append(name)
+        if len(names) == before:  # образцы без номера или этажи кончились — нейтральный номер листа
+            names.append(f"Лист {k}")
+        k += 1
     return names
 
 

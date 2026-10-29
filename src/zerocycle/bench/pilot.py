@@ -24,10 +24,12 @@ check` в этом же процессе.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import threading
@@ -488,21 +490,22 @@ def report_pilot(out: Path, rows: list[dict], mean_sheets: float) -> str:
         pts = [(r["sheets"], r["cost_usd"]) for r in rows if r["arm"] == arm and r["ok"]]
         fits[arm] = _fit(pts)
     fits.setdefault("B1", tuple(x + y for x, y in zip(fits.get("A1", (0, 0)), fits.get("B", (0, 0)), strict=True)))
-    agent = [r for r in runs if r["arm"] in AGENT_ARMS and r.get("five_hour") is not None]
-    share = None
-    if len(agent) >= 2:
-        spent = sum(r["cost_usd"] for r in agent)
-        delta = max(r["five_hour"] for r in agent) - min(r["five_hour"] for r in agent)
-        share = delta / spent if spent else None
-    lines += ["| Сценарий | $ по ценам API | Пятичасовых окон подписки |", "|---|---|---|"]
+    share, week = _share(attempts, "five_hour"), _share(attempts, "seven_day")
+    lines += ["| Сценарий | $ по ценам API | Пятичасовых окон подписки | Недель подписки |", "|---|---|---|---|"]
     for title, arms, packages, k in SCENARIOS:
         total = sum((fits[a][0] + fits[a][1] * mean_sheets) * packages * k for a in arms if a in fits)
         windows = f"{total * share:.1f}" if share else "—"
-        lines.append(f"| {title} | {total:,.0f} | {windows} |".replace(",", " "))
+        weeks = f"{total * week:.1f}" if week else "—"
+        dollars = f"{total:,.0f}".replace(",", " ")
+        lines.append(f"| {title} | {dollars} | {windows} | {weeks} |")
     lines += ["", "Стоимость прогона по рукам (a + b × листов):", ""]
     lines += [f"- {arm}: {a:.2f} + {b * 1000:.2f} $ на 1000 листов" for arm, (a, b) in sorted(fits.items())]
-    if share:
-        lines += ["", f"Доля пятичасового окна на 1 $ по ценам API — {share:.4f} (по прогонам пилота)."]
+    if share and week:
+        lines += [
+            "",
+            f"Ёмкость подписки по прогонам пилота: пятичасовое окно ≈ ${1 / share:.0f}, неделя ≈ ${1 / week:.0f}"
+            " работы модели по ценам API (медиана прироста доли окна на доллар между соседними прогонами).",
+        ]
     author = [r for r in attempts if r["arm"] == "A1-author"]
     if author:
         cost = sum(r["cost_usd"] for r in author)
@@ -518,6 +521,20 @@ def report_pilot(out: Path, rows: list[dict], mean_sheets: float) -> str:
     text = "\n".join(lines) + "\n"
     (out / "report.md").write_text(text, encoding="utf-8")
     return text
+
+
+def _share(attempts: list[dict], window: str) -> float | None:
+    """Доля окна подписки на 1 $: медиана прироста доли между соседними прогонами, делённого на цену прогона.
+
+    Сброс окна между прогонами даёт отрицательный прирост — такие пары пропускаем; параллельные прогоны и работа
+    других сессий завышают прирост, медиана к этому устойчивее среднего."""
+    seq = [r for r in attempts if r["arm"] in (*AGENT_ARMS, "A1-author") and r.get(window) is not None]
+    ratios = [
+        (cur[window] - prev[window]) / cur["cost_usd"]
+        for prev, cur in itertools.pairwise(seq)
+        if cur[window] > prev[window] and cur["cost_usd"] > 0
+    ]
+    return statistics.median(ratios) if ratios else None
 
 
 def _fmt(x, digits: int = 2) -> str:

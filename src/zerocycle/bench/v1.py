@@ -362,7 +362,7 @@ def _sheets(
 
     pages = _text_pages(spec, tpl, own, sec, key, n_text, fill, rng)
     n_t = len(pages)
-    names = B.drawing_names(sec, key, n_draw) if n_draw else []
+    names = B.drawing_names(sec, key, n_draw, fill["floors"]) if n_draw else []
     n_d = len(names)
     extra = _extras(spec, key, n_extra, fill, rng) if first_part else []
     total = n_t if tpl.tails else n_t + n_d  # «Листов» на первом листе текстовой части
@@ -569,7 +569,16 @@ def _extras(spec: PackageSpec, key: str, n: int, fill: dict, rng: random.Random)
 
 
 def _extra_titles(extra: list[tuple[str, str, list]]) -> list[tuple[str, int]]:
-    return [(title, len(sheets)) for title, _kind, sheets in extra]
+    """Строки содержания тома для листов без основной надписи. Локальные сметные расчёты — одной строкой, как в
+    реальных содержаниях: по строке на каждый их десятки, и содержание тома 12 вылезало на основную надпись."""
+    rows: list[tuple[str, int]] = []
+    local: list[tuple[str, int]] = []
+    for title, _kind, sheets in extra:
+        (local if title.startswith("Локальный сметный расчёт") else rows).append((title, len(sheets)))
+    if local:
+        first, last = local[0][0].rsplit(" ", 1)[1], local[-1][0].rsplit(" ", 1)[1]
+        rows.append((f"Локальные сметные расчёты № {first} — {last}", sum(n for _, n in local)))
+    return rows
 
 
 def _split(n: int, parts: int, rng: random.Random) -> list[int]:
