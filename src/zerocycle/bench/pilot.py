@@ -40,6 +40,7 @@ from pathlib import Path
 from zerocycle.bench.arms import ANSWER_SCHEMA, TASK, engine_answer, jaccard, score
 
 AGENT_ARMS = ("A0", "A1", "B")
+ARM_SHARE = {"B": 0.5, "B1": 1.2}  # прогон руки относительно A0 по доле окна подписки (пилот: B — $1,16 против $2,73)
 TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "Skill"]
 TIMEOUT_S = 120 * 60  # прогон дольше двух часов — сбой «таймаут»
 PATHS = re.compile(r"(?i)(?:[a-z]:[\\/]|/[a-z]/)[^\s\"'`|<>]+")  # абсолютные пути Windows и Git Bash в вызовах
@@ -298,8 +299,9 @@ def run_pilot(
 
     def agent(r: Run, root: Path) -> Run:
         if start_below is not None:
-            # доля окна на прогон по ночному замеру: около 0,25 на 300 листах и 0,55 на 1 300 (окно ≈ $15 Opus)
-            share = 0.15 + 0.3 * r.sheets / 1000
+            # доля окна на прогон по замерам пилота (окно ≈ $20 Opus 5.5): A0 — 0,14 на 323 листах и 0,18 на 1 318;
+            # B — вдвое меньше; запас ×1,6
+            share = ARM_SHARE.get(r.arm, 1.0) * 1.6 * (0.125 + 0.04 * r.sheets / 1000)
             wait_for_room(min(start_below, 0.95 - share), runs_root)
         run_dir = runs_root / uuid.uuid4().hex[:12]  # имя не выдаёт ни руку, ни пакет
         mcp = prepare(run_dir, root / "package", r.arm, skills)
