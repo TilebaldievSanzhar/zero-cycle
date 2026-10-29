@@ -67,6 +67,7 @@ class Run:
     five_hour: float | None = None  # доля пятичасового окна подписки после прогона
     seven_day: float | None = None
     outside: list[str] = field(default_factory=list)  # пути вне папки руки в вызовах инструментов
+    claude_code: str | None = None  # версия Claude Code по событию init: прогон идёт днями, CLI может обновиться
 
     @property
     def name(self) -> str:
@@ -92,6 +93,8 @@ def prepare(run_dir: Path, package: Path, arm: str, skills: Path | None) -> Path
     servers = {}
     if arm in ("B", "B1"):
         servers["zerocycle"] = {"command": sys.executable, "args": ["-m", "zerocycle", "mcp", "--root", str(run_dir)]}
+        if os.environ.get("PYTHONPATH"):  # замороженная копия движка (bench_v1.py): MCP-сервер берёт её
+            servers["zerocycle"]["env"] = {"PYTHONPATH": os.environ["PYTHONPATH"]}
     mcp = run_dir.parent / f"{run_dir.name}.mcp.json"  # конфиг — рядом, а не в папке руки
     mcp.write_text(json.dumps({"mcpServers": servers}), encoding="utf-8")
     return mcp
@@ -147,7 +150,9 @@ def run_agent(
     with transcript.open("w", encoding="utf-8") as log:
         tmp = run_dir / ".tmp"  # черновики руки — в её папке: она удаляется вместе с ними
         tmp.mkdir(exist_ok=True)
-        env = {**os.environ, "TMP": str(tmp), "TEMP": str(tmp), "TMPDIR": str(tmp)}
+        # PYTHONPATH к коду «Нулевого цикла» руке не отдаём: иначе A0 и A1 смогли бы импортировать движок
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        env.update(TMP=str(tmp), TEMP=str(tmp), TMPDIR=str(tmp))
         pipe = subprocess.PIPE
         proc = subprocess.Popen(cmd, cwd=run_dir, stdin=pipe, stdout=pipe, stderr=pipe, env=env)
         timer = threading.Timer(TIMEOUT_S, proc.kill)
@@ -171,6 +176,9 @@ def run_agent(
                             outside |= _outside(b.get("input", {}), run_dir)
                 elif e.get("type") == "rate_limit_event":
                     rate = e.get("rate_limit_info", {})
+                elif e.get("type") == "system" and e.get("subtype") == "init":
+                    run.claude_code = e.get("claude_code_version")
+                    run.model = e.get("model") or run.model
                 elif e.get("type") == "result":
                     result = e
             proc.wait()
@@ -283,7 +291,12 @@ def run_pilot(
     out.mkdir(parents=True, exist_ok=True)
     # порядок: прогон → рука → пакет; одновременно идут разные пакеты одной руки
     plan = [Run(p, a, k) for k in range(1, max(runs.values()) + 1) for a in arms if k <= runs[a] for p in packages]
-    done = {(r["package"], r["arm"], r["k"]) for r in map(json.loads, _lines(out / "runs.jsonl")) if r["ok"]}
+    # сделанным считается и сбой самой руки (схема, потолок долларов) — это результат; повторяем только обрывы лимитом
+    done = {
+        (r["package"], r["arm"], r["k"])
+        for r in map(json.loads, _lines(out / "runs.jsonl"))
+        if r["ok"] or not limit_hit(Run(r["package"], r["arm"], r["k"], error=r.get("error")))
+    }
     plan = [r for r in plan if (r.package, r.arm, r.k) not in done]  # повторный запуск дозаполняет и повторяет сбои
     stop = threading.Event()
     results: list[Run] = []
@@ -375,19 +388,26 @@ def quota(cwd: Path) -> dict[str, tuple[float, float]]:
     return out
 
 
+WEEK_LIMIT = 0.95  # недельное окно: выше — ждать его сброса
+
+
 def wait_for_room(start_below: float, cwd: Path) -> None:
-    """Ждать, пока в пятичасовом окне не станет места на прогон; недельное окно выбрано — сбой, а не ожидание."""
+    """Ждать, пока в пятичасовом и недельном окнах подписки не станет места на прогон."""
     while True:
         q = quota(cwd)
         five, reset = q.get("five_hour", (0.0, 0.0))
-        if q.get("seven_day", (0.0, 0.0))[0] >= 0.9:
-            raise RuntimeError("недельное окно подписки выбрано на 90%: пилот остановлен")
-        if five < start_below:
+        week, week_reset = q.get("seven_day", (0.0, 0.0))
+        if not q:  # сбой замера (сеть, CLI) — подождать и спросить ещё раз
+            wait, why = 300.0, "окно подписки не замерено"
+        elif week >= WEEK_LIMIT:
+            wait, why = week_reset - time.time() + 120, f"неделя выбрана на {week:.0%}"
+        elif five >= start_below:
+            wait, why = reset - time.time() + 120, f"окно 5 ч выбрано на {five:.0%}"
+        else:
             return
-        delay = max(60.0, reset - time.time() + 120)
-        until = time.strftime("%H:%M", time.localtime(reset))
-        print(f"окно 5 ч выбрано на {five:.0%}: жду сброса до {until}", flush=True)
-        time.sleep(delay)
+        until = time.strftime("%d.%m %H:%M", time.localtime(time.time() + max(60.0, wait)))
+        print(f"{why}: жду до {until}", flush=True)
+        time.sleep(max(60.0, wait))
 
 
 def _lines(path: Path) -> list[str]:
