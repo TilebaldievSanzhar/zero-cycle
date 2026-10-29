@@ -25,6 +25,7 @@ check` в этом же процессе.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -141,7 +142,11 @@ def run_agent(
     calls: dict[str, int] = {}
     outside: set[str] = set()
     with transcript.open("w", encoding="utf-8") as log:
-        proc = subprocess.Popen(cmd, cwd=run_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        tmp = run_dir / ".tmp"  # черновики руки — в её папке: она удаляется вместе с ними
+        tmp.mkdir(exist_ok=True)
+        env = {**os.environ, "TMP": str(tmp), "TEMP": str(tmp), "TMPDIR": str(tmp)}
+        pipe = subprocess.PIPE
+        proc = subprocess.Popen(cmd, cwd=run_dir, stdin=pipe, stdout=pipe, stderr=pipe, env=env)
         timer = threading.Timer(TIMEOUT_S, proc.kill)
         timer.start()
         try:
@@ -265,33 +270,22 @@ def run_pilot(
     effort: str | None = None,
     parallel: int = 3,
     stop_at: float = 0.95,
+    start_below: float | None = None,
 ) -> list[Run]:
-    """Прогоны рук по пакетам корпуса; agent-прогоны — параллельно, пока доля окна подписки ниже stop_at."""
+    """Прогоны рук по пакетам корпуса; agent-прогоны — параллельно, пока доля окна подписки ниже stop_at.
+
+    start_below — осторожный режим для подписки: перед каждым агентским прогоном мерим окно и, если оно выбрано
+    больше этой доли, ждём сброса. Прогон, оборванный лимитом подписки, повторяем после сброса один раз.
+    """
     out.mkdir(parents=True, exist_ok=True)
     # порядок: прогон → рука → пакет; одновременно идут разные пакеты одной руки
     plan = [Run(p, a, k) for k in range(1, max(runs.values()) + 1) for a in arms if k <= runs[a] for p in packages]
-    done = {(r["package"], r["arm"], r["k"]) for r in map(json.loads, _lines(out / "runs.jsonl"))}
-    plan = [r for r in plan if (r.package, r.arm, r.k) not in done]  # повторный запуск дозаполняет
+    done = {(r["package"], r["arm"], r["k"]) for r in map(json.loads, _lines(out / "runs.jsonl")) if r["ok"]}
+    plan = [r for r in plan if (r.package, r.arm, r.k) not in done]  # повторный запуск дозаполняет и повторяет сбои
     stop = threading.Event()
     results: list[Run] = []
 
-    def one(r: Run) -> Run:
-        if stop.is_set():
-            return r
-        root = corpus / r.package
-        r.sheets = _sheets(root)
-        if r.arm == "C":
-            r = run_engine(r, root / "package", out)
-        else:
-            run_dir = runs_root / uuid.uuid4().hex[:12]  # имя не выдаёт ни руку, ни пакет
-            mcp = prepare(run_dir, root / "package", r.arm, skills)
-            try:
-                r = run_agent(r, run_dir, mcp, out, model, budget, effort)
-            finally:
-                shutil.rmtree(run_dir, ignore_errors=True)  # следующие руки не увидят чужую работу
-                mcp.unlink(missing_ok=True)
-            if (r.five_hour or 0) >= stop_at or (r.seven_day or 0) >= stop_at:
-                stop.set()  # окно подписки почти выбрано: остальные прогоны — после сброса
+    def record(r: Run) -> None:
         with _lock:
             with (out / "runs.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps(asdict(r), ensure_ascii=False) + "\n")
@@ -301,6 +295,35 @@ def run_pilot(
                 f"окно 5 ч {r.five_hour} · неделя {r.seven_day}" + (f" · {r.error}" if r.error else ""),
                 flush=True,
             )
+
+    def agent(r: Run, root: Path) -> Run:
+        if start_below is not None:
+            # доля окна на прогон по ночному замеру: около 0,25 на 300 листах и 0,55 на 1 300 (окно ≈ $15 Opus)
+            share = 0.15 + 0.3 * r.sheets / 1000
+            wait_for_room(min(start_below, 0.95 - share), runs_root)
+        run_dir = runs_root / uuid.uuid4().hex[:12]  # имя не выдаёт ни руку, ни пакет
+        mcp = prepare(run_dir, root / "package", r.arm, skills)
+        try:
+            return run_agent(r, run_dir, mcp, out, model, budget, effort)
+        finally:
+            shutil.rmtree(run_dir, ignore_errors=True)  # следующие руки не увидят чужую работу
+            mcp.unlink(missing_ok=True)
+
+    def one(r: Run) -> Run:
+        if stop.is_set():
+            return r
+        root = corpus / r.package
+        r.sheets = _sheets(root)
+        if r.arm == "C":
+            r = run_engine(r, root / "package", out)
+        else:
+            r = agent(r, root)
+            if start_below is not None and limit_hit(r):
+                record(r)  # оборванный прогон — в учёт затрат; повтор — после сброса окна
+                r = agent(Run(r.package, r.arm, r.k, sheets=r.sheets), root)
+            if start_below is None and ((r.five_hour or 0) >= stop_at or (r.seven_day or 0) >= stop_at):
+                stop.set()  # окно подписки почти выбрано: остальные прогоны — после сброса
+        record(r)
         return r
 
     for r in [r for r in plan if r.arm == "C"]:  # движок — без очереди: он бесплатный и быстрый
@@ -310,16 +333,76 @@ def run_pilot(
     return results
 
 
+def limit_hit(r: Run) -> bool:
+    """Прогон оборвал лимит подписки, а не сама рука: «You've hit your 5-hour limit»."""
+    return bool(r.error) and "limit" in r.error.lower() and "hit your" in r.error.lower()
+
+
+def quota(cwd: Path) -> dict[str, tuple[float, float]]:
+    """Доли окон подписки сейчас и время сброса: крошечный запрос к Haiku (около $0,005) отдаёт rate_limit_event."""
+    cwd.mkdir(parents=True, exist_ok=True)
+    mcp = cwd / "quota.mcp.json"
+    mcp.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
+    cmd = [
+        claude_exe(),
+        "-p",
+        "--model",
+        "claude-haiku-5-5",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--setting-sources",
+        "project",
+        "--strict-mcp-config",
+        "--mcp-config",
+        str(mcp),
+        "--no-session-persistence",
+    ]
+    r = subprocess.run(cmd, input="Ответь одним словом: да".encode(), capture_output=True, cwd=cwd, timeout=300)
+    out: dict[str, tuple[float, float]] = {}
+    for line in r.stdout.decode("utf-8", "replace").splitlines():
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if e.get("type") == "rate_limit_event":
+            for name, w in e.get("rate_limit_info", {}).get("unifiedWindows", {}).items():
+                out[name] = (float(w.get("utilization") or 0.0), float(w.get("resetsAt") or 0))
+    return out
+
+
+def wait_for_room(start_below: float, cwd: Path) -> None:
+    """Ждать, пока в пятичасовом окне не станет места на прогон; недельное окно выбрано — сбой, а не ожидание."""
+    while True:
+        q = quota(cwd)
+        five, reset = q.get("five_hour", (0.0, 0.0))
+        if q.get("seven_day", (0.0, 0.0))[0] >= 0.9:
+            raise RuntimeError("недельное окно подписки выбрано на 90%: пилот остановлен")
+        if five < start_below:
+            return
+        delay = max(60.0, reset - time.time() + 120)
+        until = time.strftime("%H:%M", time.localtime(reset))
+        print(f"окно 5 ч выбрано на {five:.0%}: жду сброса до {until}", flush=True)
+        time.sleep(delay)
+
+
 def _lines(path: Path) -> list[str]:
     return [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()] if path.exists() else []
+
+
+def _last(out: Path) -> list[dict]:
+    """Последняя запись на каждый прогон: повтор после лимита подписки заменяет оборванную попытку."""
+    rows: dict[tuple, dict] = {}
+    for r in map(json.loads, _lines(out / "runs.jsonl")):
+        rows[(r["package"], r["arm"], r["k"])] = r
+    return list(rows.values())
 
 
 def score_pilot(corpus: Path, out: Path) -> list[dict]:
     """Оценка ответов по эталону пакетов; коэффициент Жаккара — между прогонами одной руки на одном пакете."""
     rows = []
     keys: dict[tuple[str, str], list[set[str]]] = {}
-    for line in _lines(out / "runs.jsonl"):
-        r = json.loads(line)
+    for r in _last(out):
         if r["arm"] == "A1-author":  # разовая подготовка руки A1 — в отчёте отдельной строкой
             continue
         answer_path = out / "answers" / f"{r['package']}.{r['arm']}.{r['k']}.json"
@@ -364,7 +447,8 @@ def _fit(points: list[tuple[int, float]]) -> tuple[float, float]:
 
 
 def report_pilot(out: Path, rows: list[dict], mean_sheets: float) -> str:
-    runs = [json.loads(x) for x in _lines(out / "runs.jsonl")]
+    attempts = [json.loads(x) for x in _lines(out / "runs.jsonl")]
+    runs = _last(out)
     by = {(r["package"], r["arm"], r["k"]): r for r in runs}
     lines = ["# Пилот бюджета: стоимость прогона по рукам", ""]
     lines += [
@@ -417,13 +501,18 @@ def report_pilot(out: Path, rows: list[dict], mean_sheets: float) -> str:
     lines += [f"- {arm}: {a:.2f} + {b * 1000:.2f} $ на 1000 листов" for arm, (a, b) in sorted(fits.items())]
     if share:
         lines += ["", f"Доля пятичасового окна на 1 $ по ценам API — {share:.4f} (по прогонам пилота)."]
-    for r in runs:
-        if r["arm"] == "A1-author":
-            lines += [
-                "",
-                f"Скилы A1 (разово): ${r['cost_usd']}, {r['minutes']} мин"
-                + (f", сбой: {r['error']}" if r["error"] else ""),
-            ]
+    author = [r for r in attempts if r["arm"] == "A1-author"]
+    if author:
+        cost = sum(r["cost_usd"] for r in author)
+        minutes = sum(r["minutes"] for r in author)
+        lines += ["", f"Скилы A1 (разово): ${cost:.2f}, {minutes:.0f} мин, сессий {len(author)}"]
+    wasted = [r for r in attempts if r["arm"] in AGENT_ARMS and r.get("error") and "limit" in r["error"].lower()]
+    if wasted:
+        lines += [
+            "",
+            f"Оборвано лимитом подписки и повторено: {len(wasted)} попыток, ${sum(r['cost_usd'] for r in wasted):.2f}"
+            " — в стоимость прогонов не входят, в затраты пилота входят.",
+        ]
     text = "\n".join(lines) + "\n"
     (out / "report.md").write_text(text, encoding="utf-8")
     return text
@@ -436,7 +525,17 @@ def _fmt(x, digits: int = 2) -> str:
 # --- скилы руки A1: отдельная сессия-автор без доступа к репозиторию -----------------------------------------------
 
 
-def author_skills(out: Path, workdir: Path, bim_data: Path, model: str, budget: float, effort: str | None) -> Run:
+RESUME = """
+
+Продолжение работы. Ты уже начал: в этой папке лежат черновики — скрипты и справочники в work/skills/, тестовый
+пакет в work/testpkg/, в .claude/skills/ — заготовка. Прошлая сессия оборвалась на лимите подписки. Доведи скилы до
+конца: SKILL.md у каждого скила, README.md, проверка скриптов на тестовом пакете, итог — в .claude/skills/. На всё
+осталось около 45 минут."""
+
+
+def author_skills(
+    out: Path, workdir: Path, bim_data: Path, model: str, budget: float, effort: str | None, resume: bool = False
+) -> Run:
     """Скилы A1 пишет отдельная сессия Claude Code (PROTOCOL, рука A1).
 
     Сессия получает только публичные источники из bim-data и задачу рук. Репозитория «Нулевого цикла», правил, корпуса
@@ -444,15 +543,17 @@ def author_skills(out: Path, workdir: Path, bim_data: Path, model: str, budget: 
     """
     from zerocycle.bench.arms import A1_AUTHOR_TASK, A1_SOURCES
 
-    if workdir.exists():
+    if workdir.exists() and not resume:
         shutil.rmtree(workdir)
-    (workdir / "sources").mkdir(parents=True)
+    (workdir / "sources").mkdir(parents=True, exist_ok=True)
     for rel in A1_SOURCES:
         shutil.copy2(bim_data / rel, workdir / "sources" / Path(rel).name)
     mcp = workdir.parent / f"{workdir.name}.mcp.json"
     mcp.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
-    run = Run(package="—", arm="A1-author", k=1)
-    run = run_agent(run, workdir, mcp, out, model, budget, effort, prompt=A1_AUTHOR_TASK.format(task=TASK), schema=None)
+    k = 1 + sum(1 for r in map(json.loads, _lines(out / "runs.jsonl")) if r["arm"] == "A1-author") if resume else 1
+    run = Run(package="—", arm="A1-author", k=k)
+    prompt = A1_AUTHOR_TASK.format(task=TASK) + (RESUME if resume else "")
+    run = run_agent(run, workdir, mcp, out, model, budget, effort, prompt=prompt, schema=None)
     skills = workdir / ".claude" / "skills"
     if skills.is_dir() and any(skills.iterdir()):
         target = out / "skills_A1"

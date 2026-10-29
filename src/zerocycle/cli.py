@@ -110,6 +110,7 @@ def _bench_run(args: argparse.Namespace) -> int:
         effort=args.effort,
         parallel=args.parallel,
         stop_at=args.stop_at,
+        start_below=args.start_below,
     )
     print(f"прогонов: {len(results)}, успешных: {sum(r.ok for r in results)}")
     return 0
@@ -118,7 +119,9 @@ def _bench_run(args: argparse.Namespace) -> int:
 def _bench_author(args: argparse.Namespace) -> int:
     from zerocycle.bench.pilot import author_skills
 
-    r = author_skills(Path(args.out), Path(args.workdir), Path(args.bim_data), args.model, args.budget, args.effort)
+    r = author_skills(
+        Path(args.out), Path(args.workdir), Path(args.bim_data), args.model, args.budget, args.effort, args.resume
+    )
     status = "ok" if r.ok else f"сбой: {r.error}"
     print(f"скилы A1: {status} · ${r.cost_usd} · {r.minutes} мин")
     return 0 if r.ok else 1
@@ -294,6 +297,11 @@ def main(argv: list[str] | None = None) -> int:
     br.add_argument("--skills", help="скилы руки A1 (папка с подпапками скилов)")
     br.add_argument("--parallel", type=int, default=3, help="агентских прогонов одновременно")
     br.add_argument("--stop-at", type=float, default=0.95, help="остановиться при такой доле окна подписки")
+    br.add_argument(
+        "--start-below",
+        type=float,
+        help="подписка: начинать прогон, только если окно выбрано меньше этой доли, иначе ждать сброса",
+    )
     br.set_defaults(func=_bench_run)
     ba = bsub.add_parser("author", help="скилы руки A1: отдельная сессия по публичным источникам bim-data")
     ba.add_argument("out", help="папка итогов: скилы — в <out>/skills_A1")
@@ -302,6 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     ba.add_argument("--model", default="claude-opus-5-5")
     ba.add_argument("--effort")
     ba.add_argument("--budget", type=float, default=15.0, help="потолок долларов по ценам API")
+    ba.add_argument("--resume", action="store_true", help="продолжить оборванную сессию-автора в той же папке")
     ba.set_defaults(func=_bench_author)
     bs = bsub.add_parser("score", help="оценка ответов, стоимость и прогноз полного прогона")
     bs.add_argument("out")
