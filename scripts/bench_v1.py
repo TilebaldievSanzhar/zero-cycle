@@ -16,10 +16,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import threading
 import time
 import traceback
 from pathlib import Path
 
+from zerocycle.bench import pilot
 from zerocycle.bench.h5 import report_h5
 from zerocycle.bench.pilot import author_skills, limit_hit, report_pilot, run_pilot, score_pilot, wait_for_room
 
@@ -35,8 +37,10 @@ MODEL = "claude-opus-5-5"
 BUDGET = 10.0  # потолок долларов на прогон по ценам API; в пилоте самый дорогой — $3,54
 AUTHOR_BUDGET = 15.0  # скилы A1: отдельная сессия, около часа работы агента
 ARMS = ["C", "B", "A1", "A0"]  # на каждом номере прогона: сначала пара главной гипотезы B и A1, потом A0
-RUNS = {"C": 5, "B": 5, "A1": 5, "A0": 5}
-START_BELOW = 0.8  # пятичасовое окно: начинать прогон, только если выбрано меньше (с поправкой на объём пакета)
+RUNS = {"C": 5, "B": 3, "A1": 3, "A0": 3}  # решение владельца 30.10: три повтора агентских рук (PROTOCOL)
+PARALLEL = 2  # агентских прогонов одновременно
+START_BELOW = 0.65  # пятичасовое окно: начинать прогон, только если выбрано меньше: два прогона — до 17% окна каждый
+FINISH = Path(r"C:\zc-bench\finish.flag")  # finish.cmd: новых прогонов не начинать, идущие дорабатывают
 
 
 def log(msg: str) -> None:
@@ -77,6 +81,22 @@ def skills() -> Path:
     raise RuntimeError("скилы A1 не готовы после четырёх сессий")
 
 
+def pausable(wait):
+    """Перед стартом прогона: замеры окна — по одному (общий файл конфига); по флагу FINISH новых прогонов нет."""
+    guard = threading.Lock()
+
+    def inner(start_below: float, cwd: Path) -> None:
+        with guard:
+            while True:
+                while FINISH.exists():
+                    time.sleep(5)
+                wait(start_below, cwd)
+                if not FINISH.exists():
+                    return
+
+    return inner
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--score", action="store_true", help="только оценка")
@@ -85,7 +105,8 @@ def main() -> int:
     if not args.score:
         if not lock():
             return 1
-        log(f"бенчмарк v1: {len(packages)} пакетов, руки {ARMS}, прогонов {RUNS}, модель {MODEL}")
+        log(f"бенчмарк v1: {len(packages)} пакетов, руки {ARMS}, прогонов {RUNS}, по {PARALLEL} сразу, модель {MODEL}")
+        pilot.wait_for_room = pausable(pilot.wait_for_room)  # run_pilot берёт её из своего модуля
         while True:
             try:
                 skills_dir = skills()
@@ -99,7 +120,7 @@ def main() -> int:
                     BUDGET,
                     RUNS_ROOT,
                     skills=skills_dir,
-                    parallel=1,
+                    parallel=PARALLEL,
                     start_below=START_BELOW,
                 )
                 break
