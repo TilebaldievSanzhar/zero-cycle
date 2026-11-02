@@ -155,6 +155,11 @@ def _download(url: str, dest: Path, rec: dict) -> None:
                     raise ValueError(f"больше {MAX_FILE >> 20} МБ")
                 h.update(chunk)
                 f.write(chunk)
+            length = r.headers.get("Content-Length")
+        if length and size != int(length):  # сервер обрывает поток без ошибки
+            raise ValueError(f"оборвано: {size} из {length} байт")
+        if dest.suffix.lower() == ".pdf" and b"%%EOF" not in dest.read_bytes()[-4096:]:
+            raise ValueError(f"оборвано: {size} байт, в конце PDF нет %%EOF")
         rec.update({"file": f"files/{dest.name}", "size": size, "sha256": h.hexdigest(), "status": "ok"})
         print(f"  {size >> 10:>8} КБ  {rec['name']}", flush=True)
     except Exception as e:  # файл удалён или слишком велик — фиксируем и идём дальше
