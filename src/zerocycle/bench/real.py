@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import re
 import shutil
 from dataclasses import dataclass
@@ -81,6 +82,47 @@ A1_AUTHOR_TASK_KZ = """Ты — сильный пользователь Claude C
 
 Скрипты проверь на тестовых PDF, которые сделаешь сам. Работай только в текущей папке: файлы вне неё не открывай и
 не ищи. Бюджет ограничен — уложись примерно в час работы."""
+
+
+VERDICTS = ["подтверждено", "не подтверждено", "проверить нельзя"]
+
+JUDGE_TASK = """Ты — независимый эксперт по проектно-сметной документации Республики Казахстан. В items.json — находки,
+которые разные проверяющие сделали по пакету в папке package/. Находки перемешаны, кто их сделал — неизвестно; не
+старайся ни подтвердить, ни опровергнуть побольше.
+
+Для каждой находки проверь по файлам пакета, есть ли дефект на самом деле:
+- «подтверждено» — дефект есть в указанном документе (и на странице, если она указана, ±1);
+- «не подтверждено» — по файлам дефекта нет: требование выполнено, документ есть, текст прочитан неверно или норма
+  применена не к месту;
+- «проверить нельзя» — нет текстового слоя и по изображению не разобрать, или нужен расчёт либо экспертиза содержания.
+
+Ссылки на нормы сверяй с перечнем действующих документов sources/AGSK-1_2025-06.pdf; оформление — с
+sources/GOST_21.101-97_SPDS_osnovnye_trebovaniya_meganorm.txt; комплектность — с приложениями Приказа № 299 в sources/.
+В reason — одна-две фразы: что именно увидел и где.
+
+Работай только в текущей папке. Python 3 с pdfplumber, pypdfium2, lxml и Pillow доступен командой python; PDF можно
+читать и инструментом Read."""
+
+JUDGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "verdicts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "verdict": {"type": "string", "enum": VERDICTS},
+                    "reason": {"type": "string"},
+                },
+                "required": ["id", "verdict", "reason"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["verdicts"],
+    "additionalProperties": False,
+}
 
 
 @dataclass(frozen=True)
@@ -203,6 +245,54 @@ def engine(corpus: Path, results: Path) -> None:
         print(f"{name}: находок {len(answer.get('findings', []))}", flush=True)
 
 
+def sample(results: Path, arms: tuple[str, ...] = ("B", "A1", "C"), per_arm: int = 25, seed: int = 2026):
+    """Слепая оценка: по per_arm «нарушений» каждой руки, поровну со всех её прогонов; рука в задании не видна.
+
+    Возвращает задания (без руки, перемешаны) и ключ id → рука, прогон — ключ остаётся локально.
+    """
+    rng = random.Random(seed)
+    items, key = [], {}
+    for arm in arms:
+        pool = []
+        for path in sorted((results / "answers").glob(f"real-*.{arm}.*.json")):
+            run = path.name.removesuffix(".json")
+            answer = json.loads(path.read_text(encoding="utf-8"))
+            pool += [(run, f) for f in answer.get("findings", []) if f.get("status") == VIOLATED]
+        for run, f in rng.sample(pool, min(per_arm, len(pool))):
+            fields = {k: f.get(k) for k in ("document", "page", "category", "description", "basis")}
+            items.append({"package": run.split(".")[0], **fields})
+            key[len(items) - 1] = run
+    order = list(range(len(items)))
+    rng.shuffle(order)
+    tasks, secret = [], {}
+    for n, i in enumerate(order, 1):
+        tasks.append({"id": f"j{n:03d}", **items[i]})
+        secret[f"j{n:03d}"] = key[i]
+    return tasks, secret
+
+
+def batches(tasks: list[dict], size: int = 10) -> list[tuple[str, list[dict]]]:
+    """Задания оценщику: по пакету, не больше size находок за прогон."""
+    out = []
+    for package in PACKAGES:
+        mine = [t for t in tasks if t["package"] == package]
+        out += [(package, mine[i : i + size]) for i in range(0, len(mine), size)]
+    return out
+
+
+def judge_report(secret: dict[str, str], verdicts: list[dict]) -> str:
+    counts: dict[str, dict[str, int]] = {}
+    for v in verdicts:
+        arm = secret[v["id"]].split(".")[1]
+        counts.setdefault(arm, {x: 0 for x in VERDICTS})[v["verdict"]] += 1
+    lines = ["| Рука | " + " | ".join(VERDICTS) + " | Доля подтверждённых из проверенных |", "|---|---|---|---|---|"]
+    for arm, c in sorted(counts.items()):
+        checked = c["подтверждено"] + c["не подтверждено"]
+        share = f"{c['подтверждено'] / checked:.2f}" if checked else "—"
+        lines.append(f"| {arm} | " + " | ".join(str(c[x]) for x in VERDICTS) + f" | {share} |")
+    return "\n".join(lines) + "\n"
+
+
 def report(results: Path) -> str:
     lines = [
         "| Прогон | Найдено дефектов | Из них «нарушение» | Всего «нарушений» | Что не найдено |",
@@ -223,13 +313,34 @@ def report(results: Path) -> str:
 def main() -> None:
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
-    for cmd, second in (("build", None), ("publish", "target"), ("engine", "results"), ("score", "results")):
+    for cmd, second in (
+        ("build", None),
+        ("publish", "target"),
+        ("engine", "results"),
+        ("score", "results"),
+        ("sample", "results"),
+        ("verdicts", "results"),
+    ):
         s = sub.add_parser(cmd)
         s.add_argument("corpus", type=Path)
         if second:
             s.add_argument(second, type=Path)
     a = p.parse_args()
-    if a.cmd == "build":
+    if a.cmd == "sample":  # задания — в ветку облака (judge/items.json), ключ — только локально
+        tasks, secret = sample(a.results)
+        (a.results / "judge_items.json").write_text(json.dumps(tasks, ensure_ascii=False, indent=1), encoding="utf-8")
+        (a.results / "judge_key.json").write_text(json.dumps(secret, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"заданий {len(tasks)}, прогонов оценщика {len(batches(tasks))}")
+    elif a.cmd == "verdicts":
+        secret = json.loads((a.results / "judge_key.json").read_text(encoding="utf-8"))
+        verdicts = [
+            v
+            for path in sorted((a.results / "judge" / "answers").glob("*.json"))
+            for v in json.loads(path.read_text(encoding="utf-8")).get("verdicts", [])
+            if v["id"] in secret
+        ]
+        print(judge_report(secret, verdicts))
+    elif a.cmd == "build":
         build(a.corpus)
     elif a.cmd == "publish":
         publish(a.corpus, a.target)

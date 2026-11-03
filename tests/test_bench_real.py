@@ -1,11 +1,23 @@
-"""Бенчмарк на реальных пакетах: сопоставление находок с убранными документами и порядок прогонов."""
+"""Бенчмарк на реальных пакетах: сопоставление находок с убранными документами, порядок прогонов, слепая оценка."""
 
+import json
 from pathlib import Path
 
 import pytest
 
 from zerocycle.bench.arms import MANUAL, VIOLATED
-from zerocycle.bench.real import HIDDEN, PACKAGES, build, hit, plan, publish, score_answer
+from zerocycle.bench.real import (
+    HIDDEN,
+    PACKAGES,
+    batches,
+    build,
+    hit,
+    judge_report,
+    plan,
+    publish,
+    sample,
+    score_answer,
+)
 
 
 def finding(text: str, status: str = VIOLATED) -> dict:
@@ -68,3 +80,21 @@ def test_build_hides_answers_and_publish_has_no_truth(tmp_path: Path):
     publish(corpus, published)
     assert not list(published.rglob("ground_truth.json"))
     assert not [p for p in published.rglob("*.pdf") if "аключени" in p.name]
+
+
+def test_sample_hides_arm_and_keeps_key(tmp_path: Path):
+    answers = tmp_path / "answers"
+    answers.mkdir()
+    for arm in ("B", "A1"):
+        for k in (1, 2):
+            findings = [{**finding(f"{arm}{k} нарушение {i}"), "document": "ОПЗ.pdf", "page": i} for i in range(5)]
+            findings.append(finding("не в выборку", MANUAL))
+            path = answers / f"real-1.{arm}.{k}.json"
+            path.write_text(json.dumps({"findings": findings}), encoding="utf-8")
+    tasks, secret = sample(tmp_path, arms=("B", "A1"), per_arm=6, seed=1)
+    assert len(tasks) == 12 and set(secret) == {t["id"] for t in tasks}
+    assert all("arm" not in t and "проверить" not in t["description"] for t in tasks)
+    assert {secret[t["id"]].split(".")[1] for t in tasks} == {"B", "A1"}
+    assert [len(items) for _, items in batches(tasks, size=5)] == [5, 5, 2]
+    verdicts = [{"id": t["id"], "verdict": "подтверждено", "reason": ""} for t in tasks]
+    assert "| B | 6 | 0 | 0 | 1.00 |" in judge_report(secret, verdicts)

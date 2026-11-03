@@ -3,7 +3,8 @@
 Берёт bench_real/ из ветки: пакеты без эталона и источники скилов. Сначала сессия-автор пишет скилы A1, потом руки B и
 A1 идут парами. Каждый прогон сразу коммитится и пушится: сеанс может оборваться. Повторный запуск продолжает.
 
-    /tmp/venv/bin/python scripts/bench_real_cloud.py    # движок — в /tmp/venv, рукам — /tmp/armenv без него
+    /tmp/venv/bin/python scripts/bench_real_cloud.py           # движок — в /tmp/venv, рукам — /tmp/armenv без него
+    /tmp/venv/bin/python scripts/bench_real_cloud.py --judge   # слепая оценка находок по bench_real/judge/items.json
 """
 
 from __future__ import annotations
@@ -22,16 +23,18 @@ from dataclasses import asdict
 from pathlib import Path
 
 from zerocycle.bench.pilot import Run, prepare, run_agent
-from zerocycle.bench.real import A1_AUTHOR_TASK_KZ, TASK_KZ, plan
+from zerocycle.bench.real import A1_AUTHOR_TASK_KZ, JUDGE_SCHEMA, JUDGE_TASK, TASK_KZ, batches, plan
 
 REPO = Path(__file__).resolve().parents[1]
 ROOT = REPO / "bench_real"
 OUT = ROOT / "results"
+JUDGE = ROOT / "judge"
 RUNS = Path("/tmp/zc-runs")
 MODEL = "claude-opus-5-5"
 EFFORT = "high"  # явно: у облачного сеанса своё значение по умолчанию
 BUDGET = 10.0
 AUTHOR_BUDGET = 15.0
+JUDGE_BUDGET = 3.0
 _lock = threading.Lock()
 
 
@@ -39,28 +42,28 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M')}] {msg}", flush=True)
 
 
-def spent() -> float:
-    path = OUT / "runs.jsonl"
+def spent(out: Path = OUT) -> float:
+    path = out / "runs.jsonl"
     rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()] if path.exists() else []
     return sum(r["cost_usd"] for r in rows)
 
 
-def done() -> set[tuple[str, str, int]]:
-    path = OUT / "runs.jsonl"
+def done(out: Path = OUT) -> set[tuple[str, str, int]]:
+    path = out / "runs.jsonl"
     rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()] if path.exists() else []
     return {(r["package"], r["arm"], r["k"]) for r in rows}
 
 
-def record(r: Run) -> None:
+def record(r: Run, out: Path = OUT) -> None:
     with _lock:
-        OUT.mkdir(parents=True, exist_ok=True)
-        with (OUT / "runs.jsonl").open("a", encoding="utf-8") as f:
+        out.mkdir(parents=True, exist_ok=True)
+        with (out / "runs.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(asdict(r), ensure_ascii=False) + "\n")
         log(
-            f"{r.name}: {'ok' if r.ok else 'сбой'} · ${r.cost_usd} · {r.minutes} мин · всего ${spent():.2f}"
+            f"{r.name}: {'ok' if r.ok else 'сбой'} · ${r.cost_usd} · {r.minutes} мин · всего ${spent(out):.2f}"
             + (f" · {r.error}" if r.error else "")
         )
-        subprocess.run(["git", "add", str(OUT)], cwd=REPO, check=True)
+        subprocess.run(["git", "add", str(out)], cwd=REPO, check=True)
         subprocess.run(["git", "commit", "-q", "-m", f"bench real: {r.name}"], cwd=REPO, check=True)
         for attempt in range(3):
             if subprocess.run(["git", "push", "-q", "origin", "HEAD"], cwd=REPO).returncode == 0:
@@ -106,11 +109,42 @@ def one(item: tuple[str, str, int], skills: Path, limit: float) -> None:
     record(r)
 
 
+def judge(limit: float) -> None:
+    """Слепая оценка: оценщик видит пакет, нормы и находки без указания руки."""
+    tasks = json.loads((JUDGE / "items.json").read_text(encoding="utf-8"))
+    todo = [(i, package, items) for i, (package, items) in enumerate(batches(tasks), 1)]
+    todo = [x for x in todo if (x[1], "judge", x[0]) not in done(JUDGE)]
+    log(f"оценка: прогонов {len(todo)}, потрачено ${spent(JUDGE):.2f}, потолок ${limit}")
+
+    def batch(x: tuple[int, str, list[dict]]) -> None:
+        i, package, items = x
+        if spent(JUDGE) >= limit:
+            log(f"оценка {i}: пропущена, потолок ${limit}")
+            return
+        run_dir = RUNS / uuid.uuid4().hex[:12]
+        mcp = prepare(run_dir, ROOT / "corpus" / package / "package", "judge", None)
+        shutil.copytree(ROOT / "sources", run_dir / "sources")
+        (run_dir / "items.json").write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
+        try:
+            r = run_agent(
+                Run(package, "judge", i), run_dir, mcp, JUDGE, MODEL, JUDGE_BUDGET, EFFORT, JUDGE_TASK, JUDGE_SCHEMA
+            )
+        finally:
+            shutil.rmtree(run_dir, ignore_errors=True)
+            mcp.unlink(missing_ok=True)
+        record(r, JUDGE)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(batch, todo))
+    log(f"оценка готова, потрачено ${spent(JUDGE):.2f}")
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=float, default=85.0, help="не начинать прогон, если потрачено больше, $")
     p.add_argument("--repeats", type=int, default=2)
     p.add_argument("--only-first", action="store_true", help="только скилы и первая пара: замер цены")
+    p.add_argument("--judge", action="store_true", help="слепая оценка находок; --limit — её потолок")
     a = p.parse_args()
     arm_python = Path("/tmp/armenv/bin")
     if not (arm_python / "python").exists():
@@ -121,6 +155,9 @@ def main() -> int:
     if check.returncode == 0:
         raise SystemExit("движок виден рукам: python импортирует zerocycle")
     RUNS.mkdir(parents=True, exist_ok=True)
+    if a.judge:
+        judge(a.limit)
+        return 0
     skills = author()
     todo = [x for x in plan(["B", "A1"], a.repeats) if x not in done()]
     if a.only_first:
