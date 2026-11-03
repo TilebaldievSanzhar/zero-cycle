@@ -4,3 +4,15 @@ bench_real_cloud.py: error: unrecognized arguments: --judge
 usage: bench_real_cloud.py [-h] [--limit LIMIT] [--repeats REPEATS]
                            [--only-first]
 bench_real_cloud.py: error: unrecognized arguments: --judge
+[13:52] оценка: прогонов 10, потрачено $0.00, потолок $15.0
+[13:56] real-1.judge.2: ok · $0.5207 · 4.17 мин · всего $0.52
+[13:57] real-1.judge.1: ok · $1.0491 · 4.89 мин · всего $1.57
+[14:00] real-2.judge.4: ok · $0.4005 · 3.24 мин · всего $1.97
+[14:04] real-2.judge.3: ok · $1.0653 · 7.86 мин · всего $3.04
+[14:07] real-3.judge.5: ok · $0.55 · 6.33 мин · всего $3.59
+[14:09] real-3.judge.6: ok · $0.5962 · 4.39 мин · всего $4.18
+[14:09] real-3.judge.8: ok · $0.1645 · 0.86 мин · всего $4.35
+[14:11] real-3.judge.7: ok · $0.6829 · 4.05 мин · всего $5.03
+[14:18] real-4.judge.9: ok · $0.4945 · 8.88 мин · всего $5.52
+[14:19] real-4.judge.10: ok · $0.5573 · 8.11 мин · всего $6.08
+[14:19] оценка готова, потрачено $6.08
