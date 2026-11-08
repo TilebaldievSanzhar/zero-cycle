@@ -152,4 +152,4 @@ F05) описано через info.xml с категорией «формат �
 
 Итоги, ответы, транскрипты — `var/bench/v1/results/` (report.md, h5.md, h5.json, scores.json, runs.jsonl). Код прогона —
 ветка `bench-v1-run` (последний коммит c158c8a), `src` совпадает с заморозкой. На реальных пакетах РК — отдельный
-бенчмарк, [REAL_RESULTS](REAL_RESULTS.md): там картина другая.
+бенчмарк, [REAL_RESULTS](REAL_RESULTS.md): там картина другая. Сводка обоих — [SUMMARY](SUMMARY.md).
