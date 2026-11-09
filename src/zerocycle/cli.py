@@ -187,6 +187,9 @@ def _remarks(args: argparse.Namespace) -> int:
             files += sorted(f for f in p.rglob("*.pdf") if CONCLUSION_NAME.search(f.name.replace("_", " ")))
         else:
             files.append(p)
+    # порядок не зависит от того, как переданы файлы: из копий заключения остаётся первая по пути —
+    # иначе ключи разметки (sha заключения + текст пункта) у копий менялись бы от запуска к запуску
+    files = sorted(dict.fromkeys(files), key=lambda f: f.as_posix())
     by_sha: dict[str, Conclusion] = {}
     for f in files:
         sha = sha256_file(f)
