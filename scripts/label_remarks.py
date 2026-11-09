@@ -47,7 +47,11 @@ BOUNDARIES = """Пограничные решения (одинаково во �
   реквизиты задания (дата, номер, форма) — formatting.
 - Согласования. «Согласовано со смежными разделами» — consistency; штамп или графа согласования — formatting;
   согласование с заказчиком или ведомством — completeness.
-- Несколько правок в одном пункте — по первой упомянутой."""
+- Сведения в записке. В ПЗ, ОПЗ, общие данные или общие указания добавлено описание (мероприятий, решений, требований,
+  показателей) — completeness: не хватало сведений. Изменено само решение — design.
+- АГСК-3. Номенклатура, коды и марки материалов и оборудования по АГСК-3 — formatting, даже без слова «спецификация».
+- Несколько правок в одном пункте — по первой упомянутой.
+(Калибровка 09.11.2026: правила «Сведения в записке» и «АГСК-3» добавлены после сравнения с эталоном на выборке 200.)"""
 
 SCHEMA = {
     "type": "object",
@@ -207,9 +211,21 @@ def cmd_items(tsv: Path, out: Path) -> None:
 
 
 def cmd_run(
-    items_path: Path, out: Path, engine: str, model: str, effort: str, batch: int, sample: int | None, seed: int
+    items_path: Path,
+    out: Path,
+    engine: str,
+    model: str,
+    effort: str,
+    batch: int,
+    sample: int | None,
+    seed: int,
+    exclude: list[Path] | None = None,
 ) -> None:
     items = [json.loads(x) for x in items_path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    skip = {
+        json.loads(x)["key"] for p in exclude or [] for x in p.read_text(encoding="utf-8").splitlines() if x.strip()
+    }
+    items = [it for it in items if it["key"] not in skip]  # новая выборка не пересекается с прежними
     if sample:
         items = random.Random(seed).sample(items, min(sample, len(items)))
     done = set()
@@ -283,6 +299,7 @@ def main() -> None:
     p.add_argument("--batch", type=int, default=40)
     p.add_argument("--sample", type=int)
     p.add_argument("--seed", type=int, default=2026)
+    p.add_argument("--exclude", type=Path, action="append", help="разметка, чьи пункты не брать (JSONL)")
     p = sub.add_parser("agree")
     p.add_argument("labels", type=Path)
     p.add_argument("tsv", type=Path)
@@ -291,7 +308,7 @@ def main() -> None:
         cmd_items(a.tsv, a.out)
     elif a.cmd == "run":
         model = a.model or ("gpt-6.1-sol" if a.engine == "codex" else "claude-opus-5-5")
-        cmd_run(a.items, a.out, a.engine, model, a.effort, a.batch, a.sample, a.seed)
+        cmd_run(a.items, a.out, a.engine, model, a.effort, a.batch, a.sample, a.seed, a.exclude)
     else:
         cmd_agree(a.labels, a.tsv)
 

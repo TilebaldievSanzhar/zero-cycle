@@ -34,7 +34,10 @@ from pathlib import Path
 
 BASE = "https://zakupki.gov.ru"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) zerocycle-research/0.1"
-DELAY = 1.5
+# 09.11.2026: два клиента по 1,5 с между запросами — ЕИС ответила 403 обоим. Один клиент, 4 с между запросами;
+# на 403 — долгая пауза, после трёх подряд — остановка
+DELAY = 4.0
+BLOCK_PAUSE = 600
 MAX_FILE = 400 * 1024**2
 CONCLUSION = r"заключ|экспертиз"
 _last = 0.0
@@ -57,12 +60,21 @@ def _open(url: str, tries: int = 4):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "ru"})
             return urllib.request.urlopen(req, context=_ctx, timeout=120)
+        except urllib.error.HTTPError as e:
+            if e.code != 403 or k == tries - 1:
+                raise
+            print(f"  ЕИС ответила 403 — пауза {BLOCK_PAUSE // 60} мин", file=sys.stderr, flush=True)
+            time.sleep(BLOCK_PAUSE)
         except (urllib.error.URLError, TimeoutError) as e:
             if k == tries - 1:
                 raise
             print(f"  повтор через {10 * (k + 1)} с: {e}", file=sys.stderr)
             time.sleep(10 * (k + 1))
     raise RuntimeError("unreachable")
+
+
+class Blocked(RuntimeError):
+    """ЕИС отвечает 403 и после пауз: продолжать нельзя, иначе блокировка затянется."""
 
 
 def get(url: str) -> str:
@@ -152,8 +164,17 @@ def cmd_docs(path: Path, limit: int) -> None:
     for r in todo:
         try:
             r["files"] = documents(r["common"])
-        except Exception as e:
-            r["files"], r["error"] = [], str(e)[:200]
+            r.pop("error", None)
+        except urllib.error.HTTPError as e:
+            if e.code == 403:  # блокировка: пустой список файлов записывать нельзя — закупка выглядела бы пустой
+                print("ЕИС отвечает 403 — остановка; запустить позже, продолжит с места", flush=True)
+                _save(path, recs)
+                return
+            r["error"] = str(e)[:200]
+            continue
+        except Exception as e:  # сеть или разметка: без списка файлов — повторим при следующем запуске
+            r["error"] = str(e)[:200]
+            continue
         names = [f["name"] for f in r["files"]]
         concl = [n for n in names if re.search(CONCLUSION, n, re.I)]
         print(
@@ -184,6 +205,12 @@ def _download(url: str, dest: Path, rec: dict) -> None:
             raise ValueError(f"оборвано: {size} байт, в конце PDF нет %%EOF")
         rec.update({"file": f"files/{dest.name}", "size": size, "sha256": h.hexdigest(), "status": "ok"})
         print(f"  {size >> 10:>8} КБ  {rec['name']}", flush=True)
+    except urllib.error.HTTPError as e:
+        dest.unlink(missing_ok=True)
+        if e.code == 403:
+            raise Blocked(str(e)) from e
+        rec["status"] = f"ошибка: {e}"[:200]
+        print(f"  ошибка: {rec['name']}: {e}", flush=True)
     except Exception as e:
         dest.unlink(missing_ok=True)
         rec["status"] = f"ошибка: {e}"[:200]
@@ -206,12 +233,17 @@ def cmd_fetch(path: Path, root: Path, only: str | None, regs: list[str]) -> None
         manifest["source"] = BASE + rec["common"].replace("common-info.html", "documents.html")
         files = manifest.setdefault("files", {})
         print(f"== {reg}: {rec['object'][:90]} — берём {len(wanted)}", flush=True)
-        for f in wanted:
-            entry = files.setdefault(f["url"], {"name": f["name"]})
-            dest = d / "files" / _safe(f["name"])
-            if not (dest.exists() and entry.get("sha256")):
-                _download(f["url"], dest, entry)
-        man_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+        try:
+            for f in wanted:
+                entry = files.setdefault(f["url"], {"name": f["name"]})
+                dest = d / "files" / _safe(f["name"])
+                if not (dest.exists() and entry.get("sha256")):
+                    _download(f["url"], dest, entry)
+        except Blocked:
+            print("ЕИС отвечает 403 — остановка; запустить позже, продолжит с места", flush=True)
+            return
+        finally:
+            man_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def main() -> None:
