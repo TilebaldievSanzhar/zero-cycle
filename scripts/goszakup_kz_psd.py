@@ -116,27 +116,37 @@ def cmd_list(out: str, pages: int = 1) -> None:
     ids: list[str] = []
     for kw in ["строительство", "капитальный ремонт", "реконструкция"]:
         for page in range(1, pages + 1):
-            html = get(
-                "/ru/search/announce",
-                {
-                    "filter[name]": kw,
-                    "filter[trade_type]": "r",
-                    "filter[status][]": ["350"],
-                    "filter[amount_from]": "150000000",
-                    "page": str(page),
-                },
-            )
+            try:  # портал отвечает с перебоями: страницу, что не отдалась, пропускаем — следующий запуск её доберёт
+                html = get(
+                    "/ru/search/announce",
+                    {
+                        "filter[name]": kw,
+                        "filter[trade_type]": "r",
+                        "filter[status][]": ["350"],
+                        "filter[amount_from]": "150000000",
+                        "page": str(page),
+                    },
+                )
+            except (urllib.error.URLError, TimeoutError) as e:
+                print(f"«{kw}», страница {page}: не отдалась ({e})", flush=True)
+                continue
             ids += [i for i in re.findall(r"/ru/announce/index/(\d+)", html) if i not in ids]
     result = json.loads(Path(out).read_text(encoding="utf-8")) if Path(out).exists() else {}
+    print(f"объявлений в выдаче: {len(ids)}, новых: {sum(1 for i in ids if i not in result)}", flush=True)
     for aid in ids:
         if aid in result:  # уже в списке с прошлого запуска
             continue
-        files = spec_files(aid)
+        try:
+            files = spec_files(aid)
+            name = title(aid)
+        except (urllib.error.URLError, TimeoutError) as e:
+            print(f"{aid}: не отдалось ({e})", flush=True)
+            continue
         exts: dict[str, int] = {}
         for _, n in files:
             e = n.rsplit(".", 1)[-1].lower() if "." in n else "?"
             exts[e] = exts.get(e, 0) + 1
-        result[aid] = {"title": title(aid), "files": files, "exts": exts}
+        result[aid] = {"title": name, "files": files, "exts": exts}
         print(f"{aid}: файлов {len(files):>3} {exts} | {result[aid]['title'][:90]}", flush=True)
         Path(out).write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
 
