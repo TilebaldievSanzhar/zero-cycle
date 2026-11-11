@@ -12,6 +12,9 @@
 Модель получает пункты как данные (текст из заключений третьих лиц), работает без инструментов, в пустой папке и
 отвечает по JSON-схеме. Лимит подписки Codex — событие error «usage limit … try again at …»: разметка
 останавливается, уже размеченное сохраняется, повторный запуск продолжает с места.
+
+Одинаковый текст (эксперты переносят списки между заключениями) уходит модели один раз; метка копируется на все
+ключи с этим текстом, в том числе при дозапуске на дополненном списке пунктов.
 """
 
 from __future__ import annotations
@@ -228,39 +231,66 @@ def cmd_run(
     items = [it for it in items if it["key"] not in skip]  # новая выборка не пересекается с прежними
     if sample:
         items = random.Random(seed).sample(items, min(sample, len(items)))
-    done = set()
+    done: dict[str, dict] = {}
     if out.exists():
-        done = {json.loads(x)["key"] for x in out.read_text(encoding="utf-8").splitlines() if x.strip()}
+        for x in out.read_text(encoding="utf-8").splitlines():
+            if x.strip():
+                lab = json.loads(x)
+                done[lab["key"]] = lab
+    # Эксперты переносят списки из заключения в заключение: одинаковый текст размечаем один раз, метку копируем
+    # на все его ключи (поле same_text_as — ключ, который видела модель).
+    by_text = {_norm(it["text"]): done[it["key"]] for it in items if it["key"] in done}
     todo = [it for it in items if it["key"] not in done]
+    copies = [it for it in todo if _norm(it["text"]) in by_text]
+    if copies:
+        with out.open("a", encoding="utf-8") as f:
+            for it in copies:
+                lab = by_text[_norm(it["text"])]
+                f.write(json.dumps({**lab, "key": it["key"], "same_text_as": lab["key"]}, ensure_ascii=False) + "\n")
+    groups: dict[str, list[dict]] = {}
+    for it in todo:
+        if _norm(it["text"]) not in by_text:
+            groups.setdefault(_norm(it["text"]), []).append(it)
+    reps = [g[0] for g in groups.values()]
     total = len(items)
-    print(f"к разметке {len(todo)} из {total} ({engine}, {model}, {effort})", flush=True)
+    labeled = total - sum(len(g) for g in groups.values())
+    print(
+        f"к разметке {total - labeled} из {total}, различных текстов {len(reps)} ({engine}, {model}, {effort})",
+        flush=True,
+    )
     runner = run_codex if engine == "codex" else run_claude
-    labeled, started, tokens = total - len(todo), time.time(), 0
-    first = labeled
-    print(progress(labeled, total, started, len(todo)), flush=True)
-    for i in range(0, len(todo), batch):
-        part = todo[i : i + batch]
+    started, tokens, first = time.time(), 0, labeled
+    print(progress(labeled, total, started, total - labeled), flush=True)
+    for i in range(0, len(reps), batch):
+        part = reps[i : i + batch]
         t0 = time.time()
         try:
             answer, meta = runner(prompt(part), model, effort)
         except LimitHit as e:
             print(f"лимит подписки: {e}\nуже размечено сохранено; повторный запуск продолжит с места", flush=True)
             return
-        keys = {it["key"] for it in part}
-        got = [lab for lab in answer.get("labels", []) if lab.get("key") in keys]
+        texts = {it["key"]: _norm(it["text"]) for it in part}
+        got = [lab for lab in answer.get("labels", []) if lab.get("key") in texts]
         with out.open("a", encoding="utf-8") as f:
             for lab in got:
                 lab.update({"engine": engine, "model": model, "effort": effort})
-                f.write(json.dumps(lab, ensure_ascii=False) + "\n")
-        labeled += len(got)
+                for it in groups[texts[lab["key"]]]:
+                    extra = {"key": it["key"], "same_text_as": lab["key"]} if it["key"] != lab["key"] else {}
+                    f.write(json.dumps({**lab, **extra}, ensure_ascii=False) + "\n")
+                    labeled += 1
         usage = meta.get("usage", {})
         tokens += int(usage.get("input_tokens") or 0) + int(usage.get("output_tokens") or 0)
-        left = len(todo) - (i + len(part))
+        left = sum(len(groups[_norm(it["text"])]) for it in reps[i + len(part) :])
         print(
             f"{progress(labeled, total, started, left, labeled - first)} | пачка {len(got)}/{len(part)} за "
             f"{time.time() - t0:.0f} с | токенов всего {tokens:,}".replace(",", " "),
             flush=True,
         )
+
+
+def _norm(text: str) -> str:
+    """Та же нормализация, что у ключа пункта (measure.remark_key): регистр и пробелы не различают тексты."""
+    return " ".join(text.lower().split())
 
 
 def progress(done: int, total: int, started: float, left: int, this_run: int = 0, width: int = 30) -> str:
