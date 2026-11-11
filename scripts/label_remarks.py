@@ -232,15 +232,19 @@ def cmd_run(
     if out.exists():
         done = {json.loads(x)["key"] for x in out.read_text(encoding="utf-8").splitlines() if x.strip()}
     todo = [it for it in items if it["key"] not in done]
-    print(f"к разметке {len(todo)} из {len(items)} ({engine}, {model}, {effort})", flush=True)
+    total = len(items)
+    print(f"к разметке {len(todo)} из {total} ({engine}, {model}, {effort})", flush=True)
     runner = run_codex if engine == "codex" else run_claude
+    labeled, started, tokens = total - len(todo), time.time(), 0
+    first = labeled
+    print(progress(labeled, total, started, len(todo)), flush=True)
     for i in range(0, len(todo), batch):
         part = todo[i : i + batch]
         t0 = time.time()
         try:
             answer, meta = runner(prompt(part), model, effort)
         except LimitHit as e:
-            print(f"лимит подписки: {e}", flush=True)
+            print(f"лимит подписки: {e}\nуже размечено сохранено; повторный запуск продолжит с места", flush=True)
             return
         keys = {it["key"] for it in part}
         got = [lab for lab in answer.get("labels", []) if lab.get("key") in keys]
@@ -248,7 +252,25 @@ def cmd_run(
             for lab in got:
                 lab.update({"engine": engine, "model": model, "effort": effort})
                 f.write(json.dumps(lab, ensure_ascii=False) + "\n")
-        print(f"пачка {i // batch + 1}: {len(got)} из {len(part)} за {time.time() - t0:.0f} с; {meta}", flush=True)
+        labeled += len(got)
+        usage = meta.get("usage", {})
+        tokens += int(usage.get("input_tokens") or 0) + int(usage.get("output_tokens") or 0)
+        left = len(todo) - (i + len(part))
+        print(
+            f"{progress(labeled, total, started, left, labeled - first)} | пачка {len(got)}/{len(part)} за "
+            f"{time.time() - t0:.0f} с | токенов всего {tokens:,}".replace(",", " "),
+            flush=True,
+        )
+
+
+def progress(done: int, total: int, started: float, left: int, this_run: int = 0, width: int = 30) -> str:
+    """Строка прогресса: [██████░░░░] 120/868 (14%), осталось ~6 мин. Время — по пунктам этого запуска."""
+    share = done / total if total else 1.0
+    filled = round(width * share)
+    bar = "█" * filled + "░" * (width - filled)
+    per_item = (time.time() - started) / this_run if this_run else 0
+    eta = f", осталось ~{max(1, round(left * per_item / 60))} мин" if left and per_item else ""
+    return f"[{bar}] {done}/{total} ({share:.0%}){eta}"
 
 
 def kappa(a: list[str], b: list[str]) -> float:
@@ -295,7 +317,7 @@ def main() -> None:
     p.add_argument("out", type=Path)
     p.add_argument("--engine", choices=["codex", "claude"], default="codex")
     p.add_argument("--model")
-    p.add_argument("--effort", default="medium")
+    p.add_argument("--effort", default="high")  # 11.11 владелец: gpt-6.1-sol на high
     p.add_argument("--batch", type=int, default=40)
     p.add_argument("--sample", type=int)
     p.add_argument("--seed", type=int, default=2026)
