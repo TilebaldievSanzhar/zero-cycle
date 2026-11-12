@@ -6,12 +6,13 @@
 
     python -X utf8 scripts/label_remarks.py items  <labels.tsv> <items.jsonl>          пункты из TSV разметки
     python -X utf8 scripts/label_remarks.py run    <items.jsonl> <out.jsonl> --engine codex|claude
-                       [--model M] [--effort E] [--batch 40] [--sample N] [--seed 2026]
+                       [--model M] [--effort E] [--batch 40] [--sample N] [--seed 2026] [--wait]
     python -X utf8 scripts/label_remarks.py agree  <out.jsonl> <labels.tsv>            согласие с эталоном
 
 Модель получает пункты как данные (текст из заключений третьих лиц), работает без инструментов, в пустой папке и
 отвечает по JSON-схеме. Лимит подписки Codex — событие error «usage limit … try again at …»: разметка
-останавливается, уже размеченное сохраняется, повторный запуск продолжает с места.
+останавливается, уже размеченное сохраняется, повторный запуск продолжает с места. С --wait — ждёт названного
+времени (не разобрано — 30 минут) и продолжает сама.
 
 Одинаковый текст (эксперты переносят списки между заключениями) уходит модели один раз; метка копируется на все
 ключи с этим текстом, в том числе при дозапуске на дополненном списке пунктов.
@@ -24,12 +25,14 @@ import csv
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from collections import Counter
+from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,6 +122,19 @@ def _exe(name: str) -> str:
 
 class LimitHit(RuntimeError):
     pass
+
+
+def reset_at(msg: str, now: datetime | None = None) -> datetime | None:
+    """Время сброса лимита из «… try again at 8:13 PM» — ближайшее такое время после now (местное)."""
+    m = re.search(r"try again at\s+(\d{1,2}):(\d{2})\s*([AP]M)?", msg, re.I)
+    if not m:
+        return None
+    hour, minute = int(m[1]), int(m[2])
+    if m[3]:
+        hour = hour % 12 + (12 if m[3].upper() == "PM" else 0)
+    now = now or datetime.now()
+    t = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return t if t > now else t + timedelta(days=1)
 
 
 def run_codex(text: str, model: str, effort: str) -> tuple[dict, dict]:
@@ -223,6 +239,7 @@ def cmd_run(
     sample: int | None,
     seed: int,
     exclude: list[Path] | None = None,
+    wait: bool = False,
 ) -> None:
     items = [json.loads(x) for x in items_path.read_text(encoding="utf-8").splitlines() if x.strip()]
     skip = {
@@ -263,12 +280,20 @@ def cmd_run(
     print(progress(labeled, total, started, total - labeled), flush=True)
     for i in range(0, len(reps), batch):
         part = reps[i : i + batch]
-        t0 = time.time()
-        try:
-            answer, meta = runner(prompt(part), model, effort)
-        except LimitHit as e:
-            print(f"лимит подписки: {e}\nуже размечено сохранено; повторный запуск продолжит с места", flush=True)
-            return
+        while True:
+            t0 = time.time()
+            try:
+                answer, meta = runner(prompt(part), model, effort)
+                break
+            except LimitHit as e:
+                print(f"лимит подписки: {e}\nуже размечено сохранено", flush=True)
+                if not wait:
+                    print("повторный запуск продолжит с места", flush=True)
+                    return
+                until = (reset_at(str(e)) or datetime.now() + timedelta(minutes=30)) + timedelta(minutes=2)
+                print(f"жду до {until:%d.%m %H:%M} и продолжу", flush=True)
+                time.sleep(max(60.0, (until - datetime.now()).total_seconds()))
+                started, first = time.time(), labeled  # ожидание не входит в оценку времени
         texts = {it["key"]: _norm(it["text"]) for it in part}
         got = [lab for lab in answer.get("labels", []) if lab.get("key") in texts]
         with out.open("a", encoding="utf-8") as f:
@@ -352,6 +377,7 @@ def main() -> None:
     p.add_argument("--sample", type=int)
     p.add_argument("--seed", type=int, default=2026)
     p.add_argument("--exclude", type=Path, action="append", help="разметка, чьи пункты не брать (JSONL)")
+    p.add_argument("--wait", action="store_true", help="при лимите подписки ждать сброса и продолжать")
     p = sub.add_parser("agree")
     p.add_argument("labels", type=Path)
     p.add_argument("tsv", type=Path)
@@ -360,7 +386,7 @@ def main() -> None:
         cmd_items(a.tsv, a.out)
     elif a.cmd == "run":
         model = a.model or ("gpt-6.1-sol" if a.engine == "codex" else "claude-opus-5-5")
-        cmd_run(a.items, a.out, a.engine, model, a.effort, a.batch, a.sample, a.seed, a.exclude)
+        cmd_run(a.items, a.out, a.engine, model, a.effort, a.batch, a.sample, a.seed, a.exclude, a.wait)
     else:
         cmd_agree(a.labels, a.tsv)
 
