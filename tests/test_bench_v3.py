@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from zerocycle.bench.v3 import HIDDEN, PACKAGES, Package, Seed, build, clean_name, tar_exe
+from zerocycle.bench.archives import tar_exe
+from zerocycle.bench.v3 import HIDDEN, PACKAGES, Package, Seed, build, clean_name
 
 
 def bsdtar() -> bool:
@@ -30,6 +31,14 @@ def bsdtar() -> bool:
         ("Сводная ведомость КЗ.pdf", "Сводная ведомость КЗ.pdf"),
         ("Том 3. Альбом 1. Генеральный план..pdf", "Том 3. Альбом 1. Генеральный план..pdf"),
         ("+++.pdf", "+++.pdf"),
+        ("Альбом 2 ЭСН-после замеч.pdf", "Альбом 2 ЭСН.pdf"),
+        ("ГП Текели дом после замечаний.pdf", "ГП Текели дом.pdf"),
+        ("Смета - Туран (после экспертизы)", "Смета - Туран"),
+        ("смета КОС Ботакара после зам окончательный", "смета КОС Ботакара окончательный"),
+        ("ГП-КНС1-3 Ботокара до экспертизы (14,11,2025).pdf", "ГП-КНС1-3 Ботокара (14,11,2025).pdf"),
+        ("1.ГП_ЖД_№15_по_зам_fec5941.pdf", "1.ГП_ЖД_№15_fec5941.pdf"),
+        ("Проект по замене труб.pdf", "Проект по замене труб.pdf"),
+        ("Теп.Отоп", "Теп.Отоп"),
     ],
 )
 def test_clean_name(name, clean):
@@ -109,6 +118,23 @@ def test_build_removes_answers_seeds_and_copies(tmp_path: Path):
     assert truth["renamed"] == {"+ Том 2. ПЗ закл.pdf": "Том 2. ПЗ.pdf"}
     assert json.loads((corpus / "kz-01" / "ground_truth.json").read_text(encoding="utf-8")) == truth
     assert not (corpus / "kz-01" / "_extract").exists()
+    assert truth["extract_lost"] == [] and truth["leak_suspects"] == {}
+
+
+@pytest.mark.skipif(not bsdtar(), reason="нужен bsdtar")
+def test_volumes_of_one_rar_go_to_one_folder_and_split_files_are_lost(tmp_path: Path):
+    from test_bench_archives import rar5
+    from zerocycle.bench.v3 import stage
+
+    src = tmp_path / "files"
+    src.mkdir()
+    (src / "ПСД.part1.rar").write_bytes(rar5([("ПСД/ОПЗ.pdf", b"%PDF", 0), ("ПСД/АР.pdf", b"%PD", 0x10)]))
+    (src / "ПСД.part2.rar").write_bytes(rar5([("ПСД/АР.pdf", b"F", 0x08), ("ПСД/ГП.pdf", b"%PDF gp", 0)]))
+    files, lost = stage(src, tmp_path / "out", tmp_path / "scratch")
+    # bsdtar не распакует наши RAR без настоящих CRC — но потерянное считается по заголовкам при любом исходе
+    assert all(k.startswith(("ПСД.part1.rar/ПСД/", "ПСД.part2.rar/ПСД/")) for k in files)
+    assert {p.parent for p in files.values()} <= {tmp_path / "out" / "ПСД"}
+    assert "ПСД.part1.rar/ПСД/АР.pdf: из тома в том" in lost and "ПСД.part2.rar/ПСД/АР.pdf: из тома в том" in lost
 
 
 @pytest.mark.skipif(not bsdtar(), reason="нужен bsdtar")
@@ -119,3 +145,18 @@ def test_build_fails_when_seed_is_absent(tmp_path: Path):
     packages = {"kz-01": Package("100", (Seed("Энергопаспорт.pdf", "k"),))}
     with pytest.raises(ValueError, match="нет файла"):
         build(tmp_path / "corpus", real, tmp_path / "e.jsonl", tmp_path / "e.jsonl", packages)
+
+
+@pytest.mark.parametrize(
+    ("text", "leak"),
+    [
+        ("ЗАКЛЮЧЕНИЕ комплексной вневедомственной экспертизы по рабочему проекту", True),
+        ("Мотивированный отказ в выдаче заключения", True),
+        ("Пояснительная записка (откорректирован по замечаниям экспертизы)", True),
+        ("Общая пояснительная записка. Заключение о соответствии нормам", False),
+    ],
+)
+def test_leak_in_text(text, leak):
+    from zerocycle.bench.v3 import LEAK
+
+    assert bool(LEAK.search(text)) is leak

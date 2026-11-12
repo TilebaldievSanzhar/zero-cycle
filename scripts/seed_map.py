@@ -10,10 +10,12 @@
 
     python -X utf8 scripts/seed_map.py <items.jsonl> <out.jsonl> --labels L.jsonl [--labels …]
                                        --list var/real/goszakup_kz/_list.json --root var/real/goszakup_kz
+                                       [--archives]   и файлы внутри скачанных архивов: «архив/путь внутри»
                                        [--check]      сверка с дефектами реального бенчмарка
 
 Сопоставление — по основам слов (6 букв) без служебных слов и с синонимами сокращений: «ИГИ» ↔ «геологических»,
-«казсодержание» ↔ «казахстанское содержание», «МОПБ» ↔ «пожарной безопасности».
+«казсодержание» ↔ «казахстанское содержание», «МОПБ» ↔ «пожарной безопасности». Файлы сметной программы названы
+кодами («PZ1-27_RU.docx») — код раскрывается в название документа (CODES).
 """
 
 from __future__ import annotations
@@ -22,12 +24,17 @@ import argparse
 import hashlib
 import json
 import re
+import sys
+import zipfile
 from collections import defaultdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 CONCLUSION = re.compile(r"заключ|қорытынд", re.I)
-# Документ исправили, а не добавили: до экспертизы он уже был в пакете, убирать его нельзя.
-REVISED = re.compile(r"приведен\w*\s+в\s+соответстви|откорректирован|переработан|исправлен", re.I)
+# Документ исправили, а не добавили: до экспертизы он уже был в пакете, убирать его нельзя («представлена
+# обновлённая топографическая съёмка» — старая была).
+REVISED = re.compile(r"приведен\w*\s+в\s+соответстви|откорректирован|переработан|исправлен|обновл[её]нн", re.I)
 STOP = frozenset(
     [
         "том",
@@ -85,6 +92,20 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "ту": ("технич", "услови"),
 }
 STEM = 6
+# Сметная программа SANA называет файлы кодами: что за документ, видно только по коду. Проверено по содержимому
+# файлов закупки 17248156 (12.11.2026). Код — не после латинской буквы: «1. SvSR230426 - Э_RU.xlsx», «KENML-LS4-…».
+CODES = tuple(
+    (re.compile(rf"(?<![a-z]){code}\d", re.I), name)
+    for code, name in (
+        ("LSSvResVed", "сводная ресурсная ведомость по локальной смете"),
+        ("SVMROB", "сводная ведомость материальных ресурсов и оборудования"),
+        ("SvSR", "сводный сметный расчет"),
+        ("ObSm", "объектная смета"),
+        ("PZ", "пояснительная записка к сметной документации"),
+        ("LS", "локальная смета"),
+        ("ID", "исходные данные по локальной смете"),
+    )
+)
 # основные тома по замечаниям правят, а не добавляют: для них только доля слов пункта, найденных в имени файла
 CORE = re.compile(r"пояснит|\bо?пз\b|паспорт\w*\s+(?:рабоч|проект)|сметн|альбом", re.I)
 CORE_MIN = 0.8
@@ -117,6 +138,14 @@ GENERIC = frozenset(
 )
 
 
+def expand_codes(name: str) -> str:
+    """«PZ1-27_RU» → «пояснительная записка к сметной документации PZ1-27_RU»."""
+    for rx, title in CODES:
+        if rx.search(name):
+            return f"{title} {name}"
+    return name
+
+
 def stems(text: str) -> set[str]:
     words = re.findall(r"[а-яёa-z0-9]+", text.lower().replace("ё", "е"))
     out = set()
@@ -138,7 +167,7 @@ def score(added: str, filename: str) -> float:
     имени — две основы из многих, но всё имя файла есть в пункте. Основной том («пояснительная записка дополнена …»)
     по замечаниям правят, а не добавляют: для него только доля от пункта, и с запасом — не меньше CORE_MIN.
     """
-    name = re.sub(r"\.[a-z0-9]{2,4}$", "", filename, flags=re.I)
+    name = expand_codes(re.sub(r"\.[a-z0-9]{2,5}$", "", PurePosixPath(filename).name, flags=re.I))
     a, f = stems(added), stems(name)
     common = {s for s in a & f if len(s) >= 4}
     # одной общей основы мало: «план организации рельефа» ≠ «Проект организации строительства»
@@ -148,6 +177,21 @@ def score(added: str, filename: str) -> float:
     if CORE.search(name):
         return from_added if from_added >= CORE_MIN else 0.0
     return max(from_added, len(common) / len(f))
+
+
+def archive_members(folder: Path) -> list[str]:
+    """Файлы внутри скачанных архивов закупки: «архив/путь внутри». Тома многотомного RAR — каждый по отдельности."""
+    from zerocycle.bench.archives import is_archive, members
+
+    out: list[str] = []
+    for p in sorted(folder.iterdir()) if folder.is_dir() else []:
+        if not is_archive(p.name) or not p.stat().st_size:
+            continue
+        try:
+            out += [f"{p.name}/{m}" for m in members(p)]
+        except (ValueError, OSError, zipfile.BadZipFile) as e:
+            print(f"  {folder.parent.name}/{p.name}: не прочитан ({e})")
+    return out
 
 
 def conclusion_index(root: Path) -> dict[str, str]:
@@ -171,6 +215,7 @@ def main() -> None:
     ap.add_argument("--list", type=Path, required=True)
     ap.add_argument("--root", type=Path, required=True)
     ap.add_argument("--min-score", type=float, default=0.5)
+    ap.add_argument("--archives", action="store_true", help="и файлы внутри скачанных архивов")
     ap.add_argument("--check", action="store_true", help="сверка с дефектами реального бенчмарка")
     a = ap.parse_args()
 
@@ -186,6 +231,7 @@ def main() -> None:
 
     rows, per = [], defaultdict(list)
     no_package = revised = 0
+    in_archives: dict[str, list[str]] = {}
     for key, lab in labels.items():
         if lab.get("category") != "completeness" or not lab.get("added") or key not in items:
             continue
@@ -193,11 +239,15 @@ def main() -> None:
             revised += 1
             continue
         aid = idx.get(key.split(":")[0])
-        files = [n for _, n in listed.get(aid, {}).get("files", [])] if aid else []
+        files = list(dict.fromkeys(n for _, n in listed.get(aid, {}).get("files", []))) if aid else []
         if not files:
             no_package += 1
             continue
-        files = [n for n in files if not CONCLUSION.search(n)]
+        if a.archives:
+            if aid not in in_archives:
+                in_archives[aid] = archive_members(a.root / aid / "files")
+            files += in_archives[aid]
+        files = [n for n in files if not CONCLUSION.search(PurePosixPath(n).name)]
         ranked = sorted(((score(lab["added"], n), n) for n in files), reverse=True)
         best_score, best = ranked[0] if ranked else (0.0, None)
         row = {
@@ -226,10 +276,10 @@ def main() -> None:
         uniq = sorted({r["file"] for r in rs})
         print(f"  {aid}: документов {len(uniq)} — {', '.join(u[:40] for u in uniq[:5])}")
 
+    if a.archives:
+        n_members = sum(len(v) for v in in_archives.values())
+        print(f"файлов внутри архивов: {n_members} в {sum(1 for v in in_archives.values() if v)} закупках")
     if a.check:
-        import sys
-
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
         from zerocycle.bench.real import PACKAGES
 
         found = total = 0

@@ -1,14 +1,15 @@
 """Датасет V3, слой 1: реальные пакеты РК после экспертизы с обратным засевом (docs/bench/DATASET_V3.md).
 
-Пакет закупки берётся целиком, во всех форматах: архивы распакованы (tar.exe — bsdtar: RAR, 7z, ZIP), сметы и
-таблицы остаются. Из пакета убраны:
+Пакет закупки берётся целиком, во всех форматах: архивы распакованы (bench/archives.py; тома одного RAR — в одну
+папку), сметы и таблицы остаются. Чего распаковать не удалось (файл переходит из тома в том, казахские буквы в имени
+у bsdtar), — в эталоне, extract_lost. Из пакета убраны:
 - заключение и всё, что выдаёт итог экспертизы (HIDDEN): письма экспертизы, приказ об утверждении ПСД с показателями
   «до экспертизы / после экспертизы», техспецификация закупки;
 - документы, добавленные по замечаниям (PACKAGES): карта scripts/seed_map.py, просмотренная вручную, — вместе с
   точными копиями этих файлов в других местах пакета.
 
-Из имён файлов убраны пометки «после ГЭ», «по замечаниям», «закл», «+++»: до экспертизы их не было, а агенту они
-подсказывают, что правили.
+Из имён файлов и папок убраны пометки «после ГЭ», «после замечаний», «по замечаниям», «до экспертизы», «закл», «+++»:
+до экспертизы их не было, а агенту они подсказывают, что правили.
 
     python -X utf8 -m zerocycle.bench.v3 build <корпус>  [--real var/real/goszakup_kz]
         [--items var/labels/kz_all_items.jsonl] [--labels var/labels/kz_codex_high.jsonl]
@@ -21,36 +22,45 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import shutil
-import subprocess
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+
+from zerocycle.bench.archives import extract, is_archive
 
 REAL = Path("var/real/goszakup_kz")
 ITEMS = Path("var/labels/kz_all_items.jsonl")
 LABELS = Path("var/labels/kz_codex_high.jsonl")
 
-# Заключение (и по-казахски), письма экспертизы, приказ об утверждении ПСД (в нём показатели до и после экспертизы),
-# техспецификация закупки — не часть ПСД.
-HIDDEN = re.compile(r"аключени|қорытынд|^Исх\.?\s*письм|^Приказ\b|^techspec|^техспец", re.I)
-ARCHIVES = {".zip", ".rar", ".7z"}
-# пометки состояния после экспертизы в именах файлов
+# Заключение (и по-казахски), мотивированный отказ экспертизы (в нём замечания), письма экспертизы, приказ об
+# утверждении ПСД (в нём показатели до и после экспертизы), техспецификация закупки — не часть ПСД.
+HIDDEN = re.compile(r"аключени|қорытынд|мотивированн\w*\s+отказ|^Исх\.?\s*письм|^Приказ\b|^techspec|^техспец", re.I)
+# Ответ внутри документа под другим именем: заключение, отказ, перечень замечаний — ищем в тексте первых листов PDF.
+# Пометку «откорректирован по замечаниям экспертизы» на титуле тоже видно: убрать её из PDF нельзя, только записать.
+LEAK = re.compile(
+    r"заключени\w*\s+(?:по\s+рабочему\s+проекту|комплексной\s+вневедомственной|государственной\s+экспертиз)"
+    r"|мотивированн\w+\s+отказ|сараптама\s+қорытынды|Дополнения\s+и\s+изменения,\s+внесенные|перечень\s+замечаний"
+    r"|по\s+замечани\w+\s+экспертиз",
+    re.I,
+)
+# пометки состояния до и после экспертизы в именах файлов и папок
 MARKS = (
-    re.compile(r"\s*после\s+ГЭ(?![а-яёa-z])", re.I),
-    re.compile(r"\s*по\s+замеч[а-яё]*", re.I),
+    re.compile(r"[\s_-]*\(?после[\s_]+(?:ГЭ(?![а-яёa-z])|экспертиз[а-яё]*|зам(?:еч[а-яё]*)?(?![а-яё]))\)?", re.I),
+    re.compile(r"[\s_-]*\(?до[\s_]+экспертиз[а-яё]*\)?", re.I),
+    re.compile(r"[\s_-]*по[\s_]+зам(?:еч[а-яё]*)?(?![а-яё])", re.I),
     re.compile(r"\s+закл(?![а-яё])", re.I),
     re.compile(r"\s*\+{2,}"),
     re.compile(r"^\+\s*"),
 )
+VOLUME = re.compile(r"\.part\d+$", re.I)  # «ПСД.part01.rar»: тома одного архива
 MAX_DEPTH = 3  # архивы в архивах
 
 
 @dataclass(frozen=True)
 class Seed:
-    file: str  # путь в пакете закупки: имя файла или «архив/путь внутри архива» (как в списке tar -tf)
+    file: str  # путь в пакете закупки: имя файла или «архив/путь внутри архива» (archives.members)
     remark: str  # ключ пункта заключения (label_remarks.py items): sha256 заключения[:12] + ":" + sha1 текста[:10]
 
 
@@ -62,6 +72,7 @@ class Package:
 
 
 OKZHETPES = "okzhetpes"  # 2-я и 3-я очереди одного комплекса: свои заключения, но 12 общих файлов
+OV = "Том 3.1.4 -Отопление и вентиляция.zip/Том 3.1.4 -Отопление и вентиляция"  # 17152405
 
 # Карта обратного засева 12.11 (DATASET_V3.md): 17 сопоставлений, просмотрены. Отброшено одно: «расчёты расходов
 # воды и ёмкости резервуаров» ↔ «Резервуар чистой воды 92-95.pdf» (17161636) — там чертежи типового резервуара.
@@ -74,7 +85,13 @@ PACKAGES = {
         "17067800",
         (Seed("Расчет_кж.pdf", "cdeb8bfbaa59:5cf1985b50"), Seed("Казсодержание.pdf", "cdeb8bfbaa59:9a0ac9a1cd")),
     ),
-    "kz-04": Package("17248156", (Seed("Каз содержание.xlsx", "5e372844f614:4428bb21f2"),)),
+    "kz-04": Package(
+        "17248156",
+        (
+            Seed("Каз содержание.xlsx", "5e372844f614:4428bb21f2"),
+            Seed("PZ1-27_RU.docx", "5e372844f614:5d035cdda4"),  # пояснительная записка к смете: код SANA
+        ),
+    ),
     "kz-05": Package(  # real-1
         "17560023",
         (
@@ -106,58 +123,60 @@ PACKAGES = {
             Seed("ПОДПИСАН. Перечень цен по прейскурантам.pdf", "158c6fd0eef2:e38cb08a84"),
         ),
     ),
+    # Второй прогон карты — с архивами (12.11). «перечень оборудования, материалов.xls» ↔ «сводная ведомость
+    # материальных ресурсов» не взят: старый .xls не прочитать, совпадение не проверено.
+    "kz-10": Package(
+        "17152405",
+        (
+            Seed(f"{OV}/Теплотехн. расчет ОВ Явленка (1).pdf", "979d11a81993:cfa42f77e4"),
+            Seed(f"{OV}/Гидравлический расчет.pdf", "979d11a81993:a0e5ac03c4"),
+        ),
+    ),
+    "kz-11": Package(
+        "17866626",
+        (Seed("ПСД 1.zip/ПСД 1/ВК_Ф_Расчеты_по_водоснабжению_и_водоотведению (2).pdf", "cc53fae1c077:ab1a401566"),),
+    ),
 }
 
 
 def clean_name(name: str) -> str:
-    """Имя файла без пометок состояния после экспертизы: «+ Том 2. ПЗ закл.pdf» → «Том 2. ПЗ.pdf»."""
+    """Имя файла или папки без пометок до и после экспертизы: «+ Том 2. ПЗ закл.pdf» → «Том 2. ПЗ.pdf»."""
     p = PurePosixPath(name)
-    stem = p.stem if p.suffix and len(p.suffix) <= 6 else name
-    suffix = p.suffix if stem != name else ""
+    suffix = p.suffix if re.fullmatch(r"\.[A-Za-z0-9]{1,5}", p.suffix) else ""
+    stem = name[: len(name) - len(suffix)]
     for mark in MARKS:
         stem = mark.sub("", stem)
-    stem = stem.strip()
-    return (stem or p.stem) + suffix
+    stem = stem.strip(" _-")
+    return (stem or name[: len(name) - len(suffix)]) + suffix
 
 
-def tar_exe() -> str:
-    """bsdtar: на Windows — System32\\tar.exe (tar из Git — GNU tar, он не читает RAR и ZIP)."""
-    system = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "tar.exe"
-    return str(system) if system.exists() else "tar"
+def stage(src: Path, out: Path, scratch: Path) -> tuple[dict[str, Path], list[str]]:
+    """Все файлы пакета закупки → out, архивы распакованы в папки с их именами, тома одного RAR — в одну папку.
 
-
-def extract(archive: Path, into: Path) -> Path:
-    """Распаковать в новую пустую папку; корень — единственная папка верхнего уровня, если она одна."""
-    into.mkdir(parents=True)
-    subprocess.run([tar_exe(), "-xf", str(archive), "-C", str(into)], check=True, capture_output=True)
-    base = into.resolve()
-    for p in into.rglob("*"):
-        if p.is_symlink():
-            p.unlink()
-        elif not p.resolve().is_relative_to(base):
-            raise ValueError(f"{archive.name}: путь вне папки распаковки: {p}")
-    top = list(into.iterdir())
-    return top[0] if len(top) == 1 and top[0].is_dir() else into
-
-
-def stage(src: Path, out: Path, scratch: Path) -> dict[str, Path]:
-    """Все файлы пакета закупки → out, архивы распакованы в папки с их именами.
-
-    Возвращает исходный путь («имя» или «архив/путь внутри архива») → файл в out.
+    Возвращает исходный путь («имя» или «архив/путь внутри архива») → файл в out и потерянное при распаковке.
     """
     files: dict[str, Path] = {}
+    lost: list[str] = []
+    folders: dict[Path, Path] = {}  # архив без «.partN» → папка в пакете
 
     def add(path: Path, key: str, dest: Path, depth: int) -> None:
-        if path.suffix.lower() in ARCHIVES and depth < MAX_DEPTH:
+        if is_archive(path.name) and depth < MAX_DEPTH:
             tmp = scratch / f"x{len(list(scratch.iterdir()))}"
-            root = extract(path, tmp)
-            target = dest.with_name(path.stem)
-            while target.exists():
-                target = target.with_name(target.name + "_")
-            target.mkdir(parents=True)
+            lost.extend(f"{key}/{x}" for x in extract(path, tmp))
+            base = dest.with_name(VOLUME.sub("", path.stem))
+            if base not in folders:
+                target = base
+                while target.exists():
+                    target = target.with_name(target.name + "_")
+                target.mkdir(parents=True)
+                folders[base] = target
+            # «АР.zip» с единственной папкой «АР/» внутри — без лишнего уровня; ключ — путь как в архиве
+            top = list(tmp.iterdir())
+            same = len(top) == 1 and top[0].is_dir() and top[0].name.casefold() == base.name.casefold()
+            root = top[0] if same else tmp
             for p in sorted(root.rglob("*")):
-                if p.is_file():  # ключ — путь как в архиве, в пакете — без лишней папки верхнего уровня
-                    add(p, f"{key}/{p.relative_to(tmp).as_posix()}", target / p.relative_to(root), depth + 1)
+                if p.is_file():
+                    add(p, f"{key}/{p.relative_to(tmp).as_posix()}", folders[base] / p.relative_to(root), depth + 1)
             return
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, dest)
@@ -167,23 +186,24 @@ def stage(src: Path, out: Path, scratch: Path) -> dict[str, Path]:
     for p in sorted(src.iterdir()):
         if p.is_file():
             add(p, p.name, out / p.name, 0)
-    return files
+    return files, lost
 
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def pdf_pages(path: Path) -> int | None:
-    """Листов в PDF; None — не открывается."""
+def pdf_info(path: Path, head: int = 3) -> tuple[int | None, str]:
+    """Листов в PDF (None — не открывается) и текст первых head листов."""
     import pypdfium2 as pdfium
 
     try:
         pdf = pdfium.PdfDocument(path)
     except pdfium.PdfiumError:
-        return None
+        return None, ""
     try:
-        return len(pdf)
+        text = " ".join(pdf[i].get_textpage().get_text_range() for i in range(min(head, len(pdf))))
+        return len(pdf), " ".join(text.split())
     finally:
         pdf.close()
 
@@ -202,14 +222,15 @@ def build_one(
     for d in (out, scratch):
         if d.exists():
             shutil.rmtree(d)
-    files = stage(src / "files", out, scratch)
+    files, lost = stage(src / "files", out, scratch)
     shutil.rmtree(scratch)
 
     hidden = sorted(k for k in files if HIDDEN.search(PurePosixPath(k).name))
     defects = []
     for n, seed in enumerate(spec.seeds, 1):
         if seed.file not in files:
-            raise ValueError(f"{name}: нет файла для засева: {seed.file}")
+            why = " — не распакован (многотомный RAR?)" if any(x.startswith(seed.file + ":") for x in lost) else ""
+            raise ValueError(f"{name}: нет файла для засева: {seed.file}{why}")
         if seed.remark not in items or seed.remark not in labels:
             raise ValueError(f"{name}: нет пункта {seed.remark} в разметке")
         digest = sha256(files[seed.file])
@@ -232,8 +253,9 @@ def build_one(
 
     renamed = {}
     for k, p in sorted(files.items()):
-        new = p.with_name(clean_name(p.name))
+        new = out.joinpath(*(clean_name(part) for part in p.relative_to(out).parts))
         if new != p and not new.exists():
+            new.parent.mkdir(parents=True, exist_ok=True)
             p.rename(new)
             files[k] = new
             renamed[k] = new.relative_to(out).as_posix()
@@ -248,7 +270,11 @@ def build_one(
 
     manifest = json.loads((src / "manifest.json").read_text(encoding="utf-8"))
     missing = {f["name"] for f in manifest["files"].values() if f.get("status") != "ok"}
-    pages = {k: pdf_pages(p) for k, p in files.items() if p.suffix.lower() == ".pdf"}
+    info = {k: pdf_info(p) for k, p in files.items() if p.suffix.lower() == ".pdf"}
+    pages = {k: n for k, (n, _) in info.items()}
+    leaks = {
+        k: text[max(0, m.start() - 60) : m.end() + 60] for k, (_, text) in info.items() if (m := LEAK.search(text))
+    }
     truth = {
         "package": name,
         "announce": spec.announce,
@@ -258,9 +284,13 @@ def build_one(
         "formats": dict(Counter(p.suffix.lower() or "—" for p in files.values()).most_common()),
         "pdf_pages": sum(n for n in pages.values() if n),  # знаменатель «ложных тревог на 100 листов»
         "unreadable": sorted(k for k, n in pages.items() if n is None),
+        # текст первых листов похож на заключение или пометку «по замечаниям экспертизы»: просмотреть
+        "leak_suspects": leaks,
         "hidden": hidden,
         # не скачались с портала: их отсутствие в пакете — не засеянный дефект
         "missing_in_source": sorted(n for n in missing if not HIDDEN.search(n)),
+        # в архиве есть, но целиком не распаковалось: тоже не засеянный дефект
+        "extract_lost": lost,
         "renamed": renamed,
         "defects": defects,
     }
@@ -301,6 +331,8 @@ def main() -> None:
             + f", переименовано {len(t['renamed'])}"
             + (f"; не скачано: {', '.join(t['missing_in_source'])}" if t["missing_in_source"] else "")
             + (f"; не открываются: {', '.join(t['unreadable'])}" if t["unreadable"] else "")
+            + (f"; не распаковано: {len(t['extract_lost'])}" if t["extract_lost"] else "")
+            + (f"; ответ в тексте? {', '.join(t['leak_suspects'])}" if t["leak_suspects"] else "")
         )
 
 
