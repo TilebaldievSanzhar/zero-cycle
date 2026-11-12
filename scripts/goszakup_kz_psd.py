@@ -97,20 +97,27 @@ def get(path: str, params: dict | None = None) -> str:
         return r.read().decode("utf-8", errors="replace")
 
 
-def spec_files(announce_id: str) -> list[tuple[str, str]]:
-    """Файлы «Технической спецификации» объявления: [(url, имя)]."""
+def documents(announce_id: str) -> tuple[str, list[tuple[str, str]]]:
+    """Название объявления и файлы «Технической спецификации» [(url, имя)] — с одной вкладки «Документация»."""
     html = get(f"/ru/announce/index/{announce_id}", {"tab": "documents"})
     for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S):
         if SPEC in tr and (m := re.search(r"actionModalShowFiles\((\d+),\s*(\d+)\)", tr)):
             modal = get(f"/ru/announce/actionAjaxModalShowFiles/{m.group(1)}/{m.group(2)}")
-            return [(u, " ".join(n.split())) for u, n in FILE_HREF.findall(modal)]
-    return []
+            return _title(html), [(u, " ".join(n.split())) for u, n in FILE_HREF.findall(modal)]
+    return _title(html), []
+
+
+def spec_files(announce_id: str) -> list[tuple[str, str]]:
+    return documents(announce_id)[1]
+
+
+def _title(html: str) -> str:
+    m = re.search(r'Наименование объявления</label>\s*<div[^>]*>\s*<input[^>]*value="([^"]*)"', html)
+    return (m.group(1) if m else "").replace("&quot;", '"')
 
 
 def title(announce_id: str) -> str:
-    html = get(f"/ru/announce/index/{announce_id}")
-    m = re.search(r'Наименование объявления</label>\s*<div[^>]*>\s*<input[^>]*value="([^"]*)"', html)
-    return (m.group(1) if m else "").replace("&quot;", '"')
+    return _title(get(f"/ru/announce/index/{announce_id}"))
 
 
 def cmd_list(out: str, pages: int = 1) -> None:
@@ -138,8 +145,7 @@ def cmd_list(out: str, pages: int = 1) -> None:
         if aid in result:  # уже в списке с прошлого запуска
             continue
         try:
-            files = spec_files(aid)
-            name = title(aid)
+            name, files = documents(aid)
         except (urllib.error.URLError, TimeoutError) as e:
             print(f"{aid}: не отдалось ({e})", flush=True)
             continue
