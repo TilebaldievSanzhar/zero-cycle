@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from zerocycle.bench.archives import tar_exe
-from zerocycle.bench.v3 import HIDDEN, PACKAGES, Package, Seed, build, clean_name
+from zerocycle.bench.archives import seven_zip, tar_exe
+from zerocycle.bench.v3 import PACKAGES, Package, Seed, build, clean_name, is_hidden
 
 
 def bsdtar() -> bool:
@@ -57,10 +57,13 @@ def test_clean_name(name, clean):
         ("Форма 7.pdf", False),
         ("Том 1 ОПЗ.pdf", False),
         ("+ Казсодержание закл.pdf", False),
+        ("старое Заключение Благоустроиство Кемель_compressed.pdf", True),
+        ("Тех_Заключение_de3016444c24253efafc5a498b722057.pdf", False),  # обследование здания — исходные данные
+        ("Заключение по результатам обследования.pdf", False),
     ],
 )
 def test_hidden(name, hidden):
-    assert bool(HIDDEN.search(name)) is hidden
+    assert is_hidden(name) is hidden
 
 
 def test_packages_are_distinct():
@@ -121,20 +124,33 @@ def test_build_removes_answers_seeds_and_copies(tmp_path: Path):
     assert truth["extract_lost"] == [] and truth["leak_suspects"] == {}
 
 
-@pytest.mark.skipif(not bsdtar(), reason="нужен bsdtar")
-def test_volumes_of_one_rar_go_to_one_folder_and_split_files_are_lost(tmp_path: Path):
-    from test_bench_archives import rar5
+@pytest.mark.skipif(not seven_zip(), reason="нужен 7-Zip")
+def test_volume_set_is_one_archive_in_package(tmp_path: Path):
+    from test_bench_archives import two_volumes
     from zerocycle.bench.v3 import stage
 
-    src = tmp_path / "files"
-    src.mkdir()
-    (src / "ПСД.part1.rar").write_bytes(rar5([("ПСД/ОПЗ.pdf", b"%PDF", 0), ("ПСД/АР.pdf", b"%PD", 0x10)]))
-    (src / "ПСД.part2.rar").write_bytes(rar5([("ПСД/АР.pdf", b"F", 0x08), ("ПСД/ГП.pdf", b"%PDF gp", 0)]))
-    files, lost = stage(src, tmp_path / "out", tmp_path / "scratch")
-    # bsdtar не распакует наши RAR без настоящих CRC — но потерянное считается по заголовкам при любом исходе
-    assert all(k.startswith(("ПСД.part1.rar/ПСД/", "ПСД.part2.rar/ПСД/")) for k in files)
-    assert {p.parent for p in files.values()} <= {tmp_path / "out" / "ПСД"}
-    assert "ПСД.part1.rar/ПСД/АР.pdf: из тома в том" in lost and "ПСД.part2.rar/ПСД/АР.pdf: из тома в том" in lost
+    two_volumes(tmp_path / "files")
+    files, lost = stage(tmp_path / "files", tmp_path / "out", tmp_path / "scratch")
+    assert lost == []
+    out = tmp_path / "out" / "ПСД"  # папка набора, без номера тома и без лишнего уровня «ПСД/»
+    assert files == {
+        "ПСД.rar/ПСД/ОПЗ.pdf": out / "ОПЗ.pdf",
+        "ПСД.rar/ПСД/АР.pdf": out / "АР.pdf",
+        "ПСД.rar/ПСД/Қ ГП.pdf": out / "Қ ГП.pdf",
+    }
+
+
+@pytest.mark.skipif(not bsdtar(), reason="нужен bsdtar")
+def test_without_seven_zip_volumes_keep_set_key_and_lose_split_files(tmp_path: Path, monkeypatch):
+    from test_bench_archives import two_volumes
+    from zerocycle.bench import archives, v3
+
+    monkeypatch.setattr(archives, "seven_zip", lambda: None)
+    monkeypatch.setattr(v3, "seven_zip", lambda: None)
+    two_volumes(tmp_path / "files")
+    files, lost = v3.stage(tmp_path / "files", tmp_path / "out", tmp_path / "scratch")
+    assert "ПСД.rar/ПСД/АР.pdf" not in files
+    assert "ПСД.rar/ПСД/АР.pdf: из тома в том" in lost
 
 
 @pytest.mark.skipif(not bsdtar(), reason="нужен bsdtar")

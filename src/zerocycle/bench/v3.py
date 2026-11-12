@@ -28,7 +28,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from zerocycle.bench.archives import extract, is_archive
+from zerocycle.bench.archives import extract, is_archive, set_name, seven_zip, volumes
 
 REAL = Path("var/real/goszakup_kz")
 ITEMS = Path("var/labels/kz_all_items.jsonl")
@@ -37,6 +37,8 @@ LABELS = Path("var/labels/kz_codex_high.jsonl")
 # Заключение (и по-казахски), мотивированный отказ экспертизы (в нём замечания), письма экспертизы, приказ об
 # утверждении ПСД (в нём показатели до и после экспертизы), техспецификация закупки — не часть ПСД.
 HIDDEN = re.compile(r"аключени|қорытынд|мотивированн\w*\s+отказ|^Исх\.?\s*письм|^Приказ\b|^techspec|^техспец", re.I)
+# «Техническое заключение по результатам обследования здания» — исходные данные реконструкции, а не ответ экспертизы
+SURVEY = re.compile(r"тех\w*[\s._-]*заключ|заключени\w*[\s._-]+(?:по|о)[\s._-]+(?:техническ|обследов|результат)", re.I)
 # Ответ внутри документа под другим именем: заключение, отказ, перечень замечаний — ищем в тексте первых листов PDF.
 # Пометку «откорректирован по замечаниям экспертизы» на титуле тоже видно: убрать её из PDF нельзя, только записать.
 LEAK = re.compile(
@@ -54,14 +56,16 @@ MARKS = (
     re.compile(r"\s*\+{2,}"),
     re.compile(r"^\+\s*"),
 )
-VOLUME = re.compile(r"\.part\d+$", re.I)  # «ПСД.part01.rar»: тома одного архива
 MAX_DEPTH = 3  # архивы в архивах
 
 
 @dataclass(frozen=True)
 class Seed:
-    file: str  # путь в пакете закупки: имя файла или «архив/путь внутри архива» (archives.members)
+    file: (
+        str  # путь в пакете закупки: имя файла или «архив/путь внутри архива» (archives.members, набор томов — «X.rar»)
+    )
     remark: str  # ключ пункта заключения (label_remarks.py items): sha256 заключения[:12] + ":" + sha1 текста[:10]
+    also: tuple[str, ...] = ()  # другие файлы того же документа: ПОС томом, стройгенпланом и исходником — убрать все
 
 
 @dataclass(frozen=True)
@@ -73,6 +77,10 @@ class Package:
 
 OKZHETPES = "okzhetpes"  # 2-я и 3-я очереди одного комплекса: свои заключения, но 12 общих файлов
 OV = "Том 3.1.4 -Отопление и вентиляция.zip/Том 3.1.4 -Отопление и вентиляция"  # 17152405
+DOSTYK = "школа предпринимателей достык 226.rar/школа предпринимателей достык 226"  # 15648783
+BOTAKARA = "смета КОС Ботакара после зам окончательный.rar/смета КОС Ботакара после зам окончательный"  # 17018973
+ZAL = "DownloadAllFinalDocuments (7).rar/DownloadAllFinalDocuments (7)"  # 17611189
+KEMEL = "Кемель ФИНИШ с портала.rar/Кемель ФИНИШ с портала"  # 17849240
 
 # Карта обратного засева 12.11 (DATASET_V3.md): 17 сопоставлений, просмотрены. Отброшено одно: «расчёты расходов
 # воды и ёмкости резервуаров» ↔ «Резервуар чистой воды 92-95.pdf» (17161636) — там чертежи типового резервуара.
@@ -136,7 +144,36 @@ PACKAGES = {
         "17866626",
         (Seed("ПСД 1.zip/ПСД 1/ВК_Ф_Расчеты_по_водоснабжению_и_водоотведению (2).pdf", "cc53fae1c077:ab1a401566"),),
     ),
+    # Многотомные RAR — распаковывает 7-Zip (установлен 12.11).
+    "kz-12": Package(  # ТУ теплоснабжения — единственные ТУ в пакете
+        "15648783", (Seed(f"{DOSTYK}/ТУ_ТС_5a836ece65c729f324c0a2d7c584731b.pdf", "0c5a6803e36d:a57644a64f"),)
+    ),
+    "kz-13": Package(  # остальная ПСД — в томах part1–7; тома 6–7 — хвост набора, чьи первые тома не выложены
+        "17018973", (Seed(f"{BOTAKARA}/казсодержание.xlsx", "c00940711371:7212595133"),)
+    ),
+    "kz-14": Package("17477768", (Seed("Тамарикс.rar/Тамарикс/расчет дым трубы.pdf", "ddab36245dbe:a8d701f6ba"),)),
+    "kz-15": Package("17611189", (Seed(f"{ZAL}/ПОС_993f6c98c40f2c74bc8e89fbc764fad7.pdf", "26bfa4a47242:1344ec7757"),)),
+    "kz-16": Package(  # ПОС — по двум пунктам: «раздела ПОС нет» (70bb1e7fba6c:313e07e181) и «предоставить ПОС»
+        "17849240",
+        (
+            Seed(
+                f"{KEMEL}/двг ворд/ПОС.pdf",
+                "70bb1e7fba6c:86ec1ce3dd",
+                (
+                    f"{KEMEL}/двг ворд/1 ПЗ ПОС Благ-тво сквера мкр.Кемель_ г.Алматы 11.02.2026 (1).docx",
+                    f"{KEMEL}/ПОС ПЗ Благ-тво сквера мкр.Кемель_ г.Алматы 11.02.2026 (1) том 4.pdf",
+                    f"{KEMEL}/ПОС СГП Благоустр. парковой зоны мкр.Кемель Жетысуск.г.Алматы-Стройгенплан"
+                    " том 4 книга 13.pdf",
+                ),
+            ),
+        ),
+    ),
 }
+
+
+def is_hidden(name: str) -> bool:
+    """Файл выдаёт итог экспертизы или не относится к ПСД: агенту не показываем."""
+    return bool(HIDDEN.search(name)) and not SURVEY.search(name)
 
 
 def clean_name(name: str) -> str:
@@ -161,9 +198,12 @@ def stage(src: Path, out: Path, scratch: Path) -> tuple[dict[str, Path], list[st
 
     def add(path: Path, key: str, dest: Path, depth: int) -> None:
         if is_archive(path.name) and depth < MAX_DEPTH:
+            if seven_zip() and path != volumes(path)[0]:
+                return  # 7-Zip распаковал весь набор томов с первого
+            key = key[: len(key) - len(path.name)] + set_name(path.name)  # «ПСД.rar/…» для всех томов набора
             tmp = scratch / f"x{len(list(scratch.iterdir()))}"
             lost.extend(f"{key}/{x}" for x in extract(path, tmp))
-            base = dest.with_name(VOLUME.sub("", path.stem))
+            base = dest.with_name(PurePosixPath(set_name(path.name)).stem)
             if base not in folders:
                 target = base
                 while target.exists():
@@ -225,20 +265,24 @@ def build_one(
     files, lost = stage(src / "files", out, scratch)
     shutil.rmtree(scratch)
 
-    hidden = sorted(k for k in files if HIDDEN.search(PurePosixPath(k).name))
+    hidden = sorted(k for k in files if is_hidden(PurePosixPath(k).name))
     defects = []
     for n, seed in enumerate(spec.seeds, 1):
-        if seed.file not in files:
-            why = " — не распакован (многотомный RAR?)" if any(x.startswith(seed.file + ":") for x in lost) else ""
-            raise ValueError(f"{name}: нет файла для засева: {seed.file}{why}")
+        for f in (seed.file, *seed.also):
+            if f not in files:
+                why = " — не распакован" if any(x.startswith(f + ":") for x in lost) else ""
+                raise ValueError(f"{name}: нет файла для засева: {f}{why}")
         if seed.remark not in items or seed.remark not in labels:
             raise ValueError(f"{name}: нет пункта {seed.remark} в разметке")
         digest = sha256(files[seed.file])
-        copies = sorted(k for k, p in files.items() if k != seed.file and sha256(p) == digest)
+        own = {seed.file, *seed.also}
+        digests = {sha256(files[f]) for f in own}
+        copies = sorted(k for k, p in files.items() if k not in own and sha256(p) in digests)
         defects.append(
             {
                 "id": f"{name}.{n}",
                 "file": seed.file,
+                "also": list(seed.also),
                 "sha256": digest,
                 "copies_removed": copies,
                 "remark_key": seed.remark,
@@ -247,7 +291,7 @@ def build_one(
                 "category": labels[seed.remark].get("category"),
             }
         )
-    removed = set(hidden) | {d["file"] for d in defects} | {c for d in defects for c in d["copies_removed"]}
+    removed = set(hidden) | {f for d in defects for f in (d["file"], *d["also"], *d["copies_removed"])}
     for k in removed:
         files.pop(k).unlink()
 
@@ -288,7 +332,7 @@ def build_one(
         "leak_suspects": leaks,
         "hidden": hidden,
         # не скачались с портала: их отсутствие в пакете — не засеянный дефект
-        "missing_in_source": sorted(n for n in missing if not HIDDEN.search(n)),
+        "missing_in_source": sorted(n for n in missing if not is_hidden(n)),
         # в архиве есть, но целиком не распаковалось: тоже не засеянный дефект
         "extract_lost": lost,
         "renamed": renamed,

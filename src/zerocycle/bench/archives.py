@@ -6,14 +6,15 @@ tar.exe Windows (bsdtar) переводит имена в кодовую стр�
 - RAR — имена прямо из заголовков (RAR4 и RAR5, по одному тому): тома многотомного архива читаются по отдельности, в
   каждом есть заголовки файлов, которые в нём начинаются или продолжаются;
 - TAR — tarfile (имена в UTF-8);
-- распаковка RAR и 7z — bsdtar с копией архива под латинским именем. RAR сверяется с заголовками: чего bsdtar
-  не распаковал целиком (файл переходит из тома в том; казахские буквы в имени), — в потерянных. Многотомный RAR
-  целиком распакует только 7-Zip или unrar: их на машине нет.
+- распаковка RAR и 7z — 7-Zip (установлен 12.11): многотомный набор целиком, с первого тома, имена в Unicode. Без
+  7-Zip — bsdtar по одному тому с копией архива под латинским именем: файл, который переходит из тома в том, так не
+  собрать. RAR в обоих случаях сверяется с заголовками: чего нет или что обрезано — в потерянных.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -26,6 +27,29 @@ from pathlib import Path, PurePosixPath
 RAR4 = b"Rar!\x1a\x07\x00"
 RAR5 = b"Rar!\x1a\x07\x01\x00"
 SUFFIXES = {".zip", ".rar", ".7z", ".tar"}
+VOLUME = re.compile(r"(?:^|\.)part(\d+)\.rar$", re.I)  # «ПСД.part01.rar» и просто «part1.rar»
+
+
+def seven_zip() -> str | None:
+    """7z.exe: многотомный RAR целиком и имена в Unicode. Нет — распаковка через bsdtar по одному тому."""
+    installed = Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "7-Zip" / "7z.exe"
+    return str(installed) if installed.exists() else shutil.which("7z")
+
+
+def volumes(path: Path) -> list[Path]:
+    """Тома набора, к которому относится path, по номеру: «ПСД.part1.rar», «ПСД.part2.rar»…; не том — [path]."""
+    if not (m := VOLUME.search(path.name)):
+        return [path]
+    base = path.name[: m.start()].casefold()
+    found = [(int(v.group(1)), p) for p in path.parent.iterdir() if (v := VOLUME.search(p.name))]
+    return [p for _, p in sorted(found) if p.name[: VOLUME.search(p.name).start()].casefold() == base]
+
+
+def set_name(name: str) -> str:
+    """Имя набора томов: «ПСД.part01.rar» → «ПСД.rar», «part1.rar» → «part.rar»; у обычного архива — как есть."""
+    if not (m := VOLUME.search(name)):
+        return name
+    return (name[: m.start()] or "part") + ".rar"
 
 
 def tar_exe() -> str:
@@ -216,16 +240,45 @@ def _bsdtar(path: Path, *args: str) -> subprocess.CompletedProcess:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _seven_zip_x(path: Path, into: Path) -> subprocess.CompletedProcess:
+    # пароль-заглушка: зашифрованный архив даст ошибку, а не вопрос в консоли
+    cmd = [seven_zip(), "x", "-y", "-bd", "-bso0", "-bsp0", "-pzc-no-password", f"-o{into}", str(path)]
+    return subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL)
+
+
+def _check_rar(entries: list[Entry], into: Path, whole: bool) -> list[str]:
+    """Сверка распакованного с заголовками RAR: нет файла или не тот размер — потерян, обрезок удаляется.
+
+    whole — набор томов распакован целиком (7-Zip); иначе файл, который переходит из тома в том, потерян всегда.
+    """
+    lost = []
+    base = into.resolve()
+    for e in {e.name: e for e in entries}.values():
+        p = (into / e.name).resolve()
+        if not p.is_relative_to(base):  # «..» в имени: такое не распаковывается, и мы не трогаем
+            lost.append(f"{e.name}: путь вне архива")
+        elif (e.split and not whole) or not p.is_file() or p.stat().st_size != e.size:
+            p.unlink(missing_ok=True)
+            lost.append(e.name + (": из тома в том" if e.split and not whole else ": не распакован"))
+    return lost
+
+
 def extract(path: Path, into: Path) -> list[str]:
     """Распаковать в новую пустую папку into. Возвращает потерянное: файлы архива, которые целиком не распаковались.
 
-    RAR сверяется с заголовками: обрезанный кусок файла, который переходит из тома в том, удаляется; файл, который
-    bsdtar пропустил (казахские буквы в имени), — тоже в потерянных.
+    Многотомный RAR распаковывается с первого тома: 7-Zip сам находит остальные. Распакованное сверяется с заголовками
+    всех томов набора: чего нет (тома не выложены, казахские буквы у bsdtar) или что обрезано — в потерянных.
     """
     into.mkdir(parents=True)
     lost: list[str] = []
     suffix = path.suffix.lower()
-    if suffix == ".zip":
+    if suffix in (".rar", ".7z") and seven_zip():
+        r = _seven_zip_x(path, into)
+        if suffix == ".rar":
+            lost += _check_rar([e for v in volumes(path) for e in rar_entries(v)], into, whole=True)
+        elif r.returncode:
+            lost += [x for x in r.stderr.decode("utf-8", "replace").splitlines() if x.strip()]
+    elif suffix == ".zip":
         with zipfile.ZipFile(path) as z:
             for info in z.infolist():
                 info.filename = zip_name(info)  # zipfile сам отбрасывает «..» и абсолютные пути
@@ -241,16 +294,9 @@ def extract(path: Path, into: Path) -> list[str]:
                 except (tarfile.TarError, OSError) as e:
                     lost.append(f"{m.name}: {e}")
     else:
-        r = _bsdtar(path, "-C", str(into), "-xf")
+        r = _bsdtar(path, "-C", str(into), "-xf")  # без 7-Zip: по одному тому
         if suffix == ".rar":
-            base = into.resolve()
-            for e in rar_entries(path):
-                p = (into / e.name).resolve()
-                if not p.is_relative_to(base):  # «..» в имени: bsdtar такое не распаковывает, и мы не трогаем
-                    lost.append(f"{e.name}: путь вне архива")
-                elif e.split or not p.is_file() or p.stat().st_size != e.size:
-                    p.unlink(missing_ok=True)
-                    lost.append(e.name + (": из тома в том" if e.split else ": не распакован"))
+            lost += _check_rar(rar_entries(path), into, whole=False)
         elif r.returncode:
             lost += [x for x in r.stderr.decode("cp1251", "replace").splitlines() if "Error exit" not in x]
     base = into.resolve()

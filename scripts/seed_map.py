@@ -180,18 +180,21 @@ def score(added: str, filename: str) -> float:
 
 
 def archive_members(folder: Path) -> list[str]:
-    """Файлы внутри скачанных архивов закупки: «архив/путь внутри». Тома многотомного RAR — каждый по отдельности."""
-    from zerocycle.bench.archives import is_archive, members
+    """Файлы внутри скачанных архивов закупки: «архив/путь внутри».
+
+    Тома многотомного RAR читаются по отдельности, а ключ — имя набора («ПСД.rar/…»), как в сборщике V3.
+    """
+    from zerocycle.bench.archives import is_archive, members, set_name
 
     out: list[str] = []
     for p in sorted(folder.iterdir()) if folder.is_dir() else []:
         if not is_archive(p.name) or not p.stat().st_size:
             continue
         try:
-            out += [f"{p.name}/{m}" for m in members(p)]
+            out += [f"{set_name(p.name)}/{m}" for m in members(p)]
         except (ValueError, OSError, zipfile.BadZipFile) as e:
             print(f"  {folder.parent.name}/{p.name}: не прочитан ({e})")
-    return out
+    return list(dict.fromkeys(out))
 
 
 def conclusion_index(root: Path) -> dict[str, str]:

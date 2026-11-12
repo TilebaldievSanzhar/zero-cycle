@@ -1,10 +1,26 @@
-"""Архивы пакетов ПСД: имена из заголовков RAR4 и RAR5, ZIP без флага UTF-8."""
+"""Архивы пакетов ПСД: имена из заголовков RAR4 и RAR5, многотомный RAR, ZIP без флага UTF-8, TAR."""
 
 import struct
 import zipfile
+import zlib
 from pathlib import Path
 
-from zerocycle.bench.archives import RAR4, RAR5, _rar4_unicode, extract, members, rar_entries
+import pytest
+
+from zerocycle.bench import archives
+from zerocycle.bench.archives import (
+    RAR4,
+    RAR5,
+    _rar4_unicode,
+    extract,
+    members,
+    rar_entries,
+    set_name,
+    seven_zip,
+    volumes,
+)
+
+SPLIT_BEFORE, SPLIT_AFTER = 0x08, 0x10  # флаги заголовка RAR5: продолжение из прошлого тома, продолжается в следующем
 
 
 def vint(n: int) -> bytes:
@@ -18,29 +34,61 @@ def vint(n: int) -> bytes:
 
 
 def rar5_block(fields: bytes, data: bytes = b"") -> bytes:
-    return b"\0\0\0\0" + vint(len(fields)) + fields + data  # CRC не проверяем
+    body = vint(len(fields)) + fields
+    return zlib.crc32(body).to_bytes(4, "little") + body + data
 
 
-def rar5(files: list[tuple[str, bytes, int]]) -> bytes:
-    """Том RAR5 без сжатия: (имя, данные, флаги заголовка — 0x10 «продолжается в следующем томе»)."""
-    out = RAR5 + rar5_block(vint(1) + vint(0) + vint(0))  # главный заголовок
-    for name, data, flags in files:
+def rar5(files: list[tuple[str, bytes, int, int]], volume: int | None = None, last: bool = True) -> bytes:
+    """RAR5 без сжатия: (имя, данные этого тома, полный размер, флаги заголовка); volume — номер тома с 0."""
+    flags = 0 if volume is None else 0x0001 | (0x0002 if volume else 0)
+    out = RAR5 + rar5_block(vint(1) + vint(0) + vint(flags) + (vint(volume) if volume else b""))
+    for name, data, size, head_flags in files:
         raw = name.encode("utf-8")
-        head = vint(2) + vint(0x02 | flags) + vint(len(data)) + vint(0) + vint(len(data)) + vint(0)
-        head += vint(0) + vint(0) + vint(len(raw)) + raw
+        head = vint(2) + vint(0x02 | head_flags) + vint(len(data)) + vint(0) + vint(size) + vint(0x20)
+        head += vint(0) + vint(2) + vint(len(raw)) + raw  # сжатие 0 — хранение
         out += rar5_block(head, data)
-    return out + rar5_block(vint(5) + vint(0) + vint(0))  # конец архива
+    return out + rar5_block(vint(5) + vint(0) + vint(0 if last else 1))
+
+
+AR = b"%PDF-1.4 AR album"
+
+
+def two_volumes(folder: Path) -> None:
+    """«ПСД.part1.rar» + «ПСД.part2.rar»: АР переходит из тома в том, у ГП казахская буква в имени."""
+    folder.mkdir(parents=True, exist_ok=True)
+    part1 = [("ПСД/ОПЗ.pdf", b"%PDF opz", 8, 0), ("ПСД/АР.pdf", AR[:7], len(AR), SPLIT_AFTER)]
+    part2 = [("ПСД/АР.pdf", AR[7:], len(AR), SPLIT_BEFORE), ("ПСД/Қ ГП.pdf", b"%PDF gp", 7, 0)]
+    (folder / "ПСД.part1.rar").write_bytes(rar5(part1, volume=0, last=False))
+    (folder / "ПСД.part2.rar").write_bytes(rar5(part2, volume=1))
 
 
 def test_rar5_names_sizes_and_split(tmp_path: Path):
+    two_volumes(tmp_path)
     p = tmp_path / "ПСД.part1.rar"
-    p.write_bytes(rar5([("Том 1/ОПЗ.pdf", b"%PDF opz", 0), ("Том 2/Қастеев ӨЖ.pdf", b"%PDF half", 0x10)]))
-    entries = rar_entries(p)
-    assert [(e.name, e.size, e.split) for e in entries] == [
-        ("Том 1/ОПЗ.pdf", 8, False),
-        ("Том 2/Қастеев ӨЖ.pdf", 9, True),
+    assert [(e.name, e.size, e.split) for e in rar_entries(p)] == [
+        ("ПСД/ОПЗ.pdf", 8, False),
+        ("ПСД/АР.pdf", len(AR), True),
     ]
-    assert members(p) == ["Том 1/ОПЗ.pdf", "Том 2/Қастеев ӨЖ.pdf"]
+    assert members(tmp_path / "ПСД.part2.rar") == ["ПСД/АР.pdf", "ПСД/Қ ГП.pdf"]
+    assert volumes(tmp_path / "ПСД.part2.rar") == [p, tmp_path / "ПСД.part2.rar"]
+    assert set_name("ПСД.part01.rar") == "ПСД.rar" and set_name("ПСД.zip") == "ПСД.zip"
+    assert set_name("part7.rar") == "part.rar" and set_name("Тамарикс.part3.rar") == "Тамарикс.rar"
+
+
+@pytest.mark.skipif(not seven_zip(), reason="нужен 7-Zip")
+def test_seven_zip_extracts_whole_volume_set(tmp_path: Path):
+    two_volumes(tmp_path / "src")
+    assert extract(tmp_path / "src" / "ПСД.part1.rar", tmp_path / "out") == []
+    assert (tmp_path / "out" / "ПСД" / "АР.pdf").read_bytes() == AR
+    assert (tmp_path / "out" / "ПСД" / "Қ ГП.pdf").read_bytes() == b"%PDF gp"
+
+
+def test_without_seven_zip_split_file_is_lost(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(archives, "seven_zip", lambda: None)
+    two_volumes(tmp_path / "src")
+    lost = extract(tmp_path / "src" / "ПСД.part1.rar", tmp_path / "out")
+    assert "ПСД/АР.pdf: из тома в том" in lost
+    assert not (tmp_path / "out" / "ПСД" / "АР.pdf").exists()  # обрезок не остаётся
 
 
 def encode_rar4_unicode(name: str) -> bytes:
