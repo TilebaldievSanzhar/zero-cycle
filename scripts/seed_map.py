@@ -26,6 +26,8 @@ from collections import defaultdict
 from pathlib import Path
 
 CONCLUSION = re.compile(r"заключ|қорытынд", re.I)
+# Документ исправили, а не добавили: до экспертизы он уже был в пакете, убирать его нельзя.
+REVISED = re.compile(r"приведен\w*\s+в\s+соответстви|откорректирован|переработан|исправлен", re.I)
 STOP = frozenset(
     [
         "том",
@@ -183,9 +185,12 @@ def main() -> None:
     idx = conclusion_index(a.root)
 
     rows, per = [], defaultdict(list)
-    no_package = 0
+    no_package = revised = 0
     for key, lab in labels.items():
         if lab.get("category") != "completeness" or not lab.get("added") or key not in items:
+            continue
+        if REVISED.search(items[key]["text"]):
+            revised += 1
             continue
         aid = idx.get(key.split(":")[0])
         files = [n for _, n in listed.get(aid, {}).get("files", [])] if aid else []
@@ -211,7 +216,10 @@ def main() -> None:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     matched = [r for r in rows if r["file"]]
-    print(f"пунктов «представлен документ» (комплектность): {len(rows)}; без пакета в списке: {no_package}")
+    print(
+        f"пунктов «представлен документ» (комплектность): {len(rows)}; без пакета в списке: {no_package}; "
+        f"документ исправлен, а не добавлен: {revised}"
+    )
     print(f"сопоставлено с файлом пакета: {len(matched)}; объявлений с сопоставлениями: {len(per)}")
     by_count = sorted(per.items(), key=lambda kv: -len({r["file"] for r in kv[1]}))
     for aid, rs in by_count[:15]:
