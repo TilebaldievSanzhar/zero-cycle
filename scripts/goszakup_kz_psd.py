@@ -5,6 +5,8 @@
 повтор при обрыве; уже скачанное не качается заново.
 
     python -I -X utf8 scripts/goszakup_kz_psd.py list  <out.json> [--pages 1]          кандидаты: объявления и их файлы
+        --workers N     параллельных запросов карточек (портал отвечает с таймаутами — их ждём параллельно)
+        --reuse-search  выдача поиска из <out>.search.json прошлого запуска, без 30 страниц поиска заново
     python -I -X utf8 scripts/goszakup_kz_psd.py fetch <var/real/goszakup_kz> <id> ... файлы объявлений + manifest.json
         --pick   только срез по разделам (заключение, ОПЗ, паспорт, АР, АС/КЖ, ОВ, ВК, ЭОМ, ГП, ПОС)
         --only RE     только файлы, чьё имя подходит под выражение, например заключения: --only "заключ|қорытынд"
@@ -120,8 +122,12 @@ def title(announce_id: str) -> str:
     return _title(get(f"/ru/announce/index/{announce_id}"))
 
 
-def cmd_list(out: str, pages: int = 1) -> None:
+def cmd_list(out: str, pages: int = 1, workers: int = 1, reuse_search: bool = False) -> None:
     ids: list[str] = []
+    found = Path(out).with_suffix(".search.json")  # выдача поиска: перезапуск не повторяет 30 страниц поиска
+    if reuse_search and found.exists():
+        ids = json.loads(found.read_text(encoding="utf-8"))
+        pages = 0
     for kw in ["строительство", "капитальный ремонт", "реконструкция"]:
         for page in range(1, pages + 1):
             try:  # портал отвечает с перебоями: страницу, что не отдалась, пропускаем — следующий запуск её доберёт
@@ -139,23 +145,33 @@ def cmd_list(out: str, pages: int = 1) -> None:
                 print(f"«{kw}», страница {page}: не отдалась ({e})", flush=True)
                 continue
             ids += [i for i in re.findall(r"/ru/announce/index/(\d+)", html) if i not in ids]
+    if pages:
+        found.write_text(json.dumps(ids), encoding="utf-8")
     result = json.loads(Path(out).read_text(encoding="utf-8")) if Path(out).exists() else {}
     print(f"объявлений в выдаче: {len(ids)}, новых: {sum(1 for i in ids if i not in result)}", flush=True)
-    for aid in ids:
-        if aid in result:  # уже в списке с прошлого запуска
-            continue
+    lock = threading.Lock()
+
+    def one(aid: str) -> None:
         try:
             name, files = documents(aid)
         except (urllib.error.URLError, TimeoutError) as e:
             print(f"{aid}: не отдалось ({e})", flush=True)
-            continue
+            return
         exts: dict[str, int] = {}
         for _, n in files:
             e = n.rsplit(".", 1)[-1].lower() if "." in n else "?"
             exts[e] = exts.get(e, 0) + 1
-        result[aid] = {"title": name, "files": files, "exts": exts}
-        print(f"{aid}: файлов {len(files):>3} {exts} | {result[aid]['title'][:90]}", flush=True)
-        Path(out).write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+        with lock:  # список целиком после каждой закупки; замена файла атомарна — читатель не увидит половину
+            result[aid] = {"title": name, "files": files, "exts": exts}
+            tmp = Path(out).with_suffix(".tmp")
+            tmp.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+            tmp.replace(out)
+        print(f"{aid}: файлов {len(files):>3} {exts} | {name[:90]}", flush=True)
+
+    # портал отвечает с перебоями: время уходит на таймауты соединения, а не на канал — ждём их параллельно;
+    # запросы всё равно не чаще DELAY (_wait)
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        list(pool.map(one, [aid for aid in ids if aid not in result]))
 
 
 def _safe(name: str) -> str:
@@ -239,6 +255,8 @@ def main() -> None:
     p = sub.add_parser("list")
     p.add_argument("out")
     p.add_argument("--pages", type=int, default=1)
+    p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--reuse-search", action="store_true", help="выдача поиска из <out>.search.json прошлого запуска")
     p = sub.add_parser("fetch")
     p.add_argument("root")
     p.add_argument("ids", nargs="*")
@@ -249,7 +267,7 @@ def main() -> None:
     p.add_argument("--all-ext", action="store_true")
     a = ap.parse_args()
     if a.cmd == "list":
-        cmd_list(a.out, a.pages)
+        cmd_list(a.out, a.pages, a.workers, a.reuse_search)
         return
     listed = json.loads(Path(a.from_list).read_text(encoding="utf-8")) if a.from_list else {}
     ids = a.ids or [aid for aid, rec in listed.items() if select([tuple(f) for f in rec["files"]], a.pick, a.only)]
