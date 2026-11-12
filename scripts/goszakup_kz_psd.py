@@ -10,6 +10,7 @@
         --only RE     только файлы, чьё имя подходит под выражение, например заключения: --only "заключ|қорытынд"
         --from-list F объявления и их файлы — из вывода list (без повторных запросов страниц)
         --workers N   параллельных загрузок (по умолчанию 1; файловый сервер отдаёт ~50 КБ/с на поток)
+        --all-ext     файлы любых расширений (пакет V3 целиком: архивы, сметы, xlsx), а не только pdf и zip
 
 Документы третьих лиц: храним локально в var/ (вне git); в них фамилии и подписи — в корпус для разметки
 только обезличенными.
@@ -33,7 +34,7 @@ from pathlib import Path
 BASE = "https://old.goszakup.gov.kz"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/129.0 Safari/537.36 zerocycle-research/0.1"
 DELAY = 1.2
-KEEP = {"pdf", "zip"}  # rar и 7z без внешних утилит не распаковать; сметы (xls, kenml) — позже
+KEEP = {"pdf", "zip"}  # по умолчанию; --all-ext — пакет целиком (RAR и 7z распаковывает tar.exe Windows)
 MAX_FILE = 300 * 1024**2
 SPEC = "Техническая спецификация"
 FILE_HREF = re.compile(r'href="(https://v3bl\.goszakup\.gov\.kz/files/download_file/[^"]+)"[^>]*>\s*([^<]*)<')
@@ -192,6 +193,7 @@ def cmd_fetch(
     workers: int = 1,
     only: str | None = None,
     listed_by_id: dict[str, dict] | None = None,
+    all_ext: bool = False,
 ) -> None:
     listed_by_id = listed_by_id or {}
     for aid in ids:
@@ -214,7 +216,7 @@ def cmd_fetch(
         for url, name in wanted:
             ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
             rec = files.setdefault(url, {"name": name})
-            if ext not in KEEP:
+            if not all_ext and ext not in KEEP:
                 rec["status"] = f"пропущен: .{ext}"
                 continue
             dest = d / "files" / _safe(name)
@@ -238,13 +240,14 @@ def main() -> None:
     p.add_argument("--only")
     p.add_argument("--from-list")
     p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--all-ext", action="store_true")
     a = ap.parse_args()
     if a.cmd == "list":
         cmd_list(a.out, a.pages)
         return
     listed = json.loads(Path(a.from_list).read_text(encoding="utf-8")) if a.from_list else {}
     ids = a.ids or [aid for aid, rec in listed.items() if select([tuple(f) for f in rec["files"]], a.pick, a.only)]
-    cmd_fetch(a.root, ids, only_pick=a.pick, workers=a.workers, only=a.only, listed_by_id=listed)
+    cmd_fetch(a.root, ids, only_pick=a.pick, workers=a.workers, only=a.only, listed_by_id=listed, all_ext=a.all_ext)
 
 
 if __name__ == "__main__":
