@@ -165,7 +165,14 @@ def cmd_list(out: str, pages: int = 1, workers: int = 1, reuse_search: bool = Fa
             result[aid] = {"title": name, "files": files, "exts": exts}
             tmp = Path(out).with_suffix(".tmp")
             tmp.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
-            tmp.replace(out)
+            for attempt in range(20):
+                try:
+                    tmp.replace(out)
+                    break
+                except PermissionError:  # Windows: список в этот миг читает другой процесс — подождать
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.5)
         print(f"{aid}: файлов {len(files):>3} {exts} | {name[:90]}", flush=True)
 
     # портал отвечает с перебоями: время уходит на таймауты соединения, а не на канал — ждём их параллельно;
