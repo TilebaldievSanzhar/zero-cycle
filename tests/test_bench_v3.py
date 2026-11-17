@@ -8,7 +8,20 @@ from pathlib import Path
 import pytest
 
 from zerocycle.bench.archives import seven_zip, tar_exe
-from zerocycle.bench.v3 import PACKAGES, Package, Seed, build, clean_name, is_hidden
+from zerocycle.bench.v3 import (
+    KINDS,
+    PACKAGES,
+    SEEN,
+    Package,
+    Seed,
+    build,
+    clean_name,
+    conclusions_of,
+    excluded_items,
+    is_hidden,
+    kind,
+    split,
+)
 
 
 def bsdtar() -> bool:
@@ -71,6 +84,70 @@ def test_packages_are_distinct():
     assert len(set(announces)) == len(announces)
     keys = [s.remark for p in PACKAGES.values() for s in p.seeds]
     assert len(set(keys)) == len(keys)
+
+
+def test_every_seed_has_a_kind():
+    kinds = [kind(s) for p in PACKAGES.values() for s in p.seeds]
+    assert set(kinds) <= {k for k, *_ in KINDS}
+    # как в сводке DATASET_V3: казсодержание 11, сводная ведомость ресурсов 11, энергопаспорт 8
+    assert (kinds.count("kazsod"), kinds.count("svmr"), kinds.count("energy")) == (11, 11, 8)
+
+
+@pytest.mark.parametrize(
+    ("file", "expected"),
+    [
+        ("ТУ_ТС_5a836ece65c729f3.pdf", "tu"),
+        ("ПОС_993f6c98c40f2c74.pdf", "pos"),
+        ("ПОДПИСАН. Перечень цен по прейскурантам.pdf", "prices"),
+        ("Теплотехн. расчет ОВ Явленка (1).pdf", "thermal"),
+        ("Гидравлический расчет.pdf", "calc"),
+        ("F8550 сводная ведом. материал. ресур. и оборуд..pdf", "svmr"),
+        ("Сводная ведомость потребности основных материалов, изделий.pdf", "kazsod"),
+        ("Протокол Астр месторожд1501ЦКН.PDF", "water"),
+        ("Отчет по инженерно-геологическим изысканиям.pdf", "igi"),
+        ("PZ1-27_RU.docx", "pz_smeta"),
+    ],
+)
+def test_kind_by_name(file, expected):
+    assert kind(Seed(f"архив.rar/папка/{file}", "x:y")) == expected
+
+
+def test_kind_unknown_needs_explicit():
+    with pytest.raises(ValueError):
+        kind(Seed("Брошюра 2 _ исправ.pdf", "x:y"))
+    assert kind(Seed("Брошюра 2 _ исправ.pdf", "x:y", kind="energy")) == "energy"
+
+
+def test_split_keeps_groups_together_and_seen_in_dev():
+    parts = split()
+    dev, held = set(parts["dev"]), set(parts["heldout"])
+    assert dev | held == set(PACKAGES) and not dev & held
+    assert set(SEEN) <= dev
+    for g in {p.group for p in PACKAGES.values()} - {None}:
+        members = {n for n, p in PACKAGES.items() if p.group == g}
+        assert members <= dev or members <= held
+
+
+def test_split_pulls_group_of_seen_package():
+    packages = {"kz-05": Package("1", group="g"), "kz-06": Package("2", group="g"), "kz-50": Package("3")}
+    assert split(packages) == {"dev": ["kz-05", "kz-06"], "heldout": ["kz-50"]}
+
+
+def test_excluded_items_follow_copies_of_conclusion(tmp_path: Path):
+    files = tmp_path / "real" / "1" / "files"
+    files.mkdir(parents=True)
+    (files / "Заключение.pdf").write_bytes(b"%PDF c1")
+    (files / "АР.pdf").write_bytes(b"%PDF ar")
+    prefixes = conclusions_of(tmp_path / "real", ["1"])
+    assert len(prefixes) == 1  # АР.pdf — не заключение
+    p = next(iter(prefixes))
+    items = {
+        f"{p}:a": {"conclusion": "SE-1/25"},
+        "bbbbbbbbbbbb:a": {"conclusion": "SE-1/25"},  # то же заключение, приложенное к другой закупке
+        "cccccccccccc:a": {"conclusion": "SE-2/25"},
+    }
+    keys, numbers = excluded_items(items, prefixes)
+    assert keys == {f"{p}:a", "bbbbbbbbbbbb:a"} and numbers == {"SE-1/25"}
 
 
 def make_source(real: Path) -> None:

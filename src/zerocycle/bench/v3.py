@@ -13,6 +13,7 @@
 
     python -X utf8 -m zerocycle.bench.v3 build <корпус>  [--real var/real/goszakup_kz]
         [--items var/labels/kz_all_items.jsonl] [--labels var/labels/kz_codex_high.jsonl]
+    python -X utf8 -m zerocycle.bench.v3 split <корпус>  → docs/bench/data/v3_split.json (PROTOCOL_V3.md)
 
 Эталон — <корпус>/<пакет>/ground_truth.json рядом с package/, вне git: в нём тексты пунктов заключений.
 """
@@ -66,6 +67,7 @@ class Seed:
     )
     remark: str  # ключ пункта заключения (label_remarks.py items): sha256 заключения[:12] + ":" + sha1 текста[:10]
     also: tuple[str, ...] = ()  # другие файлы того же документа: ПОС томом, стройгенпланом и исходником — убрать все
+    kind: str = ""  # вид документа (KINDS), если по имени файла его не понять
 
 
 @dataclass(frozen=True)
@@ -247,10 +249,93 @@ PACKAGES = {
         "16502460",
         (
             Seed("Брошюра 2 _ Энергетический паспорт.pdf", "6256697833fb:cb7a57c690"),  # СШ им. Естемесова
-            Seed("Брошюра 2 _ исправ оканч + 20.06.2023.pdf", "2ac6bab93dba:cb7a57c690"),  # СШ им. Абая
+            Seed("Брошюра 2 _ исправ оканч + 20.06.2023.pdf", "2ac6bab93dba:cb7a57c690", kind="energy"),  # СШ им. Абая
         ),
     ),
 }
+
+# Виды убранных документов — для полноты по типам (PROTOCOL_V3.md): первое совпадение по имени файла.
+# Группы: смета, энергопаспорт, расчёты, ИГИ, ПОС, прочие.
+KINDS = (
+    ("kazsod", "смета", "ведомость казахстанского содержания", r"каз\w*[\s._-]*содерж|ведомост\w*[\s._-]+потребност"),
+    (
+        "svmr",
+        "смета",
+        "сводная ведомость материальных ресурсов",
+        r"ресурс\w*[\s._-]*ведом|ведом\w*[\s._-]+материал\w*[\s._-]+ресур",
+    ),
+    ("pz_smeta", "смета", "пояснительная записка к смете", r"записк\w*[\s._-]+к[\s._-]+смет|^PZ\d"),
+    ("prices", "смета", "перечень цен по прейскурантам", r"перечень[\s._-]+цен|прейскурант"),
+    ("energy", "энергопаспорт", "энергетический паспорт", r"энерг\w*[\s._-]*паспорт"),
+    ("thermal", "расчёты", "теплотехнический расчёт", r"теплотехн"),
+    ("calc", "расчёты", "прочие расчёты", r"расч[её]т"),
+    ("igi", "ИГИ", "отчёт об инженерно-геологических изысканиях", r"геолог|(?<![а-яё])ИГИ(?![а-яё])"),
+    ("pos", "ПОС", "проект организации строительства", r"(?<![а-яё])ПОС(?![а-яё])"),
+    ("mopb", "прочие", "мероприятия по пожарной безопасности", r"МОПБ|пожарн"),
+    ("tu", "прочие", "технические условия", r"(?<![а-яё])ТУ(?![а-яё])"),
+    ("water", "прочие", "протокол утверждения запасов подземных вод", r"месторожд|запас\w*[\s._-]+вод"),
+)
+KIND_GROUP = {k: g for k, g, _, _ in KINDS}
+
+# Вид объекта: сети, коллекторы и дорога — линейные; парки — благоустройство; остальное — здания и сооружения.
+LINEAR = frozenset(
+    {"kz-01", "kz-03", "kz-13", "kz-17", "kz-19", "kz-20", "kz-21", "kz-22", "kz-23"}
+    | {"kz-27", "kz-28", "kz-29", "kz-30", "kz-31", "kz-34", "kz-38"}
+)
+LANDSCAPE = frozenset({"kz-04", "kz-16", "kz-18"})
+
+# Разделение (PROTOCOL_V3.md, 17.11): в разработку — пакеты, на которых уже работали движок или прошлые бенчмарки, и их
+# группы. Отложенными они быть не могут; на них пилот и отладка движка v2. Остальное — отложенная часть.
+SEEN = {
+    "kz-03": "real-3 бенчмарка на реальных пакетах (PROTOCOL_REAL)",
+    "kz-05": "real-1 того же бенчмарка",
+    "kz-07": "real-2 того же бенчмарка",
+    "kz-08": "опись и штампы реальных пакетов, шаг 0.11 (REAL_KZ)",
+    "kz-09": "Тауыш: на нём писались и проверялись правила kz и ru (CHECK_KZ, CHECK_RU)",
+}
+# Заключения в папке закупки — как в разборе пунктов (items_from_conclusions): PDF с такими словами в имени
+CONCLUSION = re.compile(r"заключ|экспертиз|қорыт", re.I)
+
+
+def kind(seed: Seed) -> str:
+    """Вид убранного документа: явный или по имени файла."""
+    if seed.kind:
+        return seed.kind
+    name = PurePosixPath(seed.file).name
+    for k, _, _, pattern in KINDS:
+        if re.search(pattern, name, re.I):
+            return k
+    raise ValueError(f"вид документа не определён: {seed.file}")
+
+
+def object_class(name: str) -> str:
+    return "линейные" if name in LINEAR else "благоустройство" if name in LANDSCAPE else "здания"
+
+
+def split(packages: dict[str, Package] | None = None) -> dict[str, list[str]]:
+    """Разработка — SEEN и пакеты их групп, отложенная часть — остальное."""
+    packages = packages or PACKAGES
+    groups = {packages[n].group for n in SEEN if n in packages} - {None}
+    dev = {n for n, p in packages.items() if n in SEEN or p.group in groups}
+    return {"dev": sorted(dev), "heldout": sorted(set(packages) - dev)}
+
+
+def conclusions_of(real: Path, announces: list[str]) -> set[str]:
+    """sha256[:12] заключений закупок — начало ключей их пунктов (remarks.measure.remark_key)."""
+    return {
+        sha256(p)[:12]
+        for a in announces
+        for p in (real / a).rglob("*.pdf")
+        if CONCLUSION.search(p.name) and "_x" not in p.parts
+    }
+
+
+def excluded_items(items: dict[str, dict], prefixes: set[str]) -> tuple[set[str], set[str]]:
+    """Пункты, которых не должно быть в знании движка v2: из заключений отложенных закупок и их копий, приложенных
+    к другим закупкам (тот же номер заключения). Возвращает ключи пунктов и номера заключений."""
+    numbers = {r.get("conclusion") for k, r in items.items() if k.split(":")[0] in prefixes} - {None, ""}
+    keys = {k for k, r in items.items() if k.split(":")[0] in prefixes or r.get("conclusion") in numbers}
+    return keys, numbers
 
 
 def is_hidden(name: str) -> bool:
@@ -438,6 +523,54 @@ def build(
     ]
 
 
+SPLIT_DATE = "2026-11-17"
+SPLIT = Path("docs/bench/data/v3_split.json")
+
+
+def split_record(corpus: Path, real: Path = REAL, items: Path = ITEMS) -> dict:
+    """Разделение со сводкой по частям и списком пунктов, закрытых для знания движка v2."""
+    parts = split()
+    truth = {n: json.loads((corpus / n / "ground_truth.json").read_text(encoding="utf-8")) for n in PACKAGES}
+
+    def summary(names: list[str]) -> dict:
+        defects = [(n, kind(s)) for n in names for s in PACKAGES[n].seeds]
+        return {
+            "packages": len(names),
+            "clusters": len({PACKAGES[n].group or n for n in names}),
+            "defects": len(defects),
+            "files": sum(truth[n]["files"] for n in names),
+            "pdf_pages": sum(truth[n]["pdf_pages"] for n in names),
+            "defects_by_group": dict(Counter(KIND_GROUP[k] for _, k in defects).most_common()),
+            "defects_by_kind": dict(Counter(k for _, k in defects).most_common()),
+            "defects_by_object": dict(Counter(object_class(n) for n, _ in defects).most_common()),
+            "packages_by_object": dict(Counter(object_class(n) for n in names).most_common()),
+        }
+
+    heldout = parts["heldout"]
+    prefixes = conclusions_of(real, [PACKAGES[n].announce for n in heldout])
+    keys, numbers = excluded_items(load_jsonl(items), prefixes)
+    lost = [s.remark for n in heldout for s in PACKAGES[n].seeds if s.remark not in keys]
+    if lost:
+        raise AssertionError(f"пункты засева отложенной части не попали в исключение: {lost}")
+    return {
+        "date": SPLIT_DATE,
+        "rule": "разработка — пакеты, на которых уже работали движок или прошлые бенчмарки, и их группы; "
+        "остальное — отложенная часть",
+        "dev": [
+            {"package": n, "announce": PACKAGES[n].announce, "why": SEEN.get(n) or f"группа {PACKAGES[n].group}"}
+            for n in parts["dev"]
+        ],
+        "heldout": [{"package": n, "announce": PACKAGES[n].announce, "group": PACKAGES[n].group} for n in heldout],
+        "summary": {"dev": summary(parts["dev"]), "heldout": summary(heldout)},
+        # знание движка v2 из замечаний строится без этих пунктов: иначе B′ заранее знает ответы отложенной части
+        "knowledge_exclude": {
+            "conclusions_sha12": sorted(prefixes),
+            "conclusion_numbers": sorted(numbers),
+            "items": len(keys),
+        },
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Датасет V3: пакеты РК с обратным засевом")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -447,7 +580,23 @@ def main() -> None:
     b.add_argument("--items", type=Path, default=ITEMS)
     b.add_argument("--labels", type=Path, default=LABELS)
     b.add_argument("--only", help="только эти пакеты, через запятую: kz-17,kz-18")
+    s = sub.add_parser("split", help="разделение на разработку и отложенную часть → JSON (PROTOCOL_V3.md)")
+    s.add_argument("corpus", type=Path)
+    s.add_argument("--real", type=Path, default=REAL)
+    s.add_argument("--items", type=Path, default=ITEMS)
+    s.add_argument("--out", type=Path, default=SPLIT)
     a = ap.parse_args()
+    if a.cmd == "split":
+        rec = split_record(a.corpus, a.real, a.items)
+        a.out.write_text(json.dumps(rec, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        for part in ("dev", "heldout"):
+            print(part, json.dumps(rec["summary"][part], ensure_ascii=False))
+        ex = rec["knowledge_exclude"]
+        print(
+            f"исключено из знания: {ex['items']} пунктов, заключений {len(ex['conclusions_sha12'])} файлов, "
+            f"номеров {len(ex['conclusion_numbers'])}"
+        )
+        return
     chosen = {n: PACKAGES[n] for n in a.only.split(",")} if a.only else None
     for t in build(a.corpus, a.real, a.items, a.labels, chosen):
         ds = t["defects"]

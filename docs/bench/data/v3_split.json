@@ -1,0 +1,356 @@
+{
+ "date": "2026-11-17",
+ "rule": "разработка — пакеты, на которых уже работали движок или прошлые бенчмарки, и их группы; остальное — отложенная часть",
+ "dev": [
+  {
+   "package": "kz-03",
+   "announce": "17067800",
+   "why": "real-3 бенчмарка на реальных пакетах (PROTOCOL_REAL)"
+  },
+  {
+   "package": "kz-05",
+   "announce": "17560023",
+   "why": "real-1 того же бенчмарка"
+  },
+  {
+   "package": "kz-06",
+   "announce": "17560893",
+   "why": "группа okzhetpes"
+  },
+  {
+   "package": "kz-07",
+   "announce": "17571053",
+   "why": "real-2 того же бенчмарка"
+  },
+  {
+   "package": "kz-08",
+   "announce": "17763665",
+   "why": "опись и штампы реальных пакетов, шаг 0.11 (REAL_KZ)"
+  },
+  {
+   "package": "kz-09",
+   "announce": "17778737",
+   "why": "Тауыш: на нём писались и проверялись правила kz и ru (CHECK_KZ, CHECK_RU)"
+  }
+ ],
+ "heldout": [
+  {
+   "package": "kz-01",
+   "announce": "16909959",
+   "group": null
+  },
+  {
+   "package": "kz-02",
+   "announce": "17039050",
+   "group": null
+  },
+  {
+   "package": "kz-04",
+   "announce": "17248156",
+   "group": null
+  },
+  {
+   "package": "kz-10",
+   "announce": "17152405",
+   "group": null
+  },
+  {
+   "package": "kz-11",
+   "announce": "17866626",
+   "group": null
+  },
+  {
+   "package": "kz-12",
+   "announce": "15648783",
+   "group": null
+  },
+  {
+   "package": "kz-13",
+   "announce": "17018973",
+   "group": null
+  },
+  {
+   "package": "kz-14",
+   "announce": "17477768",
+   "group": null
+  },
+  {
+   "package": "kz-15",
+   "announce": "17611189",
+   "group": null
+  },
+  {
+   "package": "kz-16",
+   "announce": "17849240",
+   "group": null
+  },
+  {
+   "package": "kz-17",
+   "announce": "13370053",
+   "group": null
+  },
+  {
+   "package": "kz-18",
+   "announce": "13373454",
+   "group": null
+  },
+  {
+   "package": "kz-19",
+   "announce": "13541669",
+   "group": "teplo-uch"
+  },
+  {
+   "package": "kz-20",
+   "announce": "13542151",
+   "group": "teplo-uch"
+  },
+  {
+   "package": "kz-21",
+   "announce": "13542193",
+   "group": "teplo-uch"
+  },
+  {
+   "package": "kz-22",
+   "announce": "13649784",
+   "group": "water-sela"
+  },
+  {
+   "package": "kz-23",
+   "announce": "13650335",
+   "group": "water-sela"
+  },
+  {
+   "package": "kz-24",
+   "announce": "13780218",
+   "group": null
+  },
+  {
+   "package": "kz-25",
+   "announce": "13928527",
+   "group": null
+  },
+  {
+   "package": "kz-26",
+   "announce": "13928702",
+   "group": null
+  },
+  {
+   "package": "kz-27",
+   "announce": "13968111",
+   "group": null
+  },
+  {
+   "package": "kz-28",
+   "announce": "14154877",
+   "group": null
+  },
+  {
+   "package": "kz-29",
+   "announce": "14534860",
+   "group": null
+  },
+  {
+   "package": "kz-30",
+   "announce": "14772419",
+   "group": null
+  },
+  {
+   "package": "kz-31",
+   "announce": "14975193",
+   "group": null
+  },
+  {
+   "package": "kz-32",
+   "announce": "15011223",
+   "group": null
+  },
+  {
+   "package": "kz-33",
+   "announce": "15660545",
+   "group": null
+  },
+  {
+   "package": "kz-34",
+   "announce": "15781238",
+   "group": null
+  },
+  {
+   "package": "kz-35",
+   "announce": "15805375",
+   "group": null
+  },
+  {
+   "package": "kz-36",
+   "announce": "15851663",
+   "group": null
+  },
+  {
+   "package": "kz-37",
+   "announce": "15966961",
+   "group": null
+  },
+  {
+   "package": "kz-38",
+   "announce": "16167610",
+   "group": null
+  },
+  {
+   "package": "kz-39",
+   "announce": "16502460",
+   "group": null
+  }
+ ],
+ "summary": {
+  "dev": {
+   "packages": 6,
+   "clusters": 5,
+   "defects": 13,
+   "files": 134,
+   "pdf_pages": 4174,
+   "defects_by_group": {
+    "расчёты": 3,
+    "смета": 3,
+    "ИГИ": 3,
+    "энергопаспорт": 3,
+    "прочие": 1
+   },
+   "defects_by_kind": {
+    "igi": 3,
+    "energy": 3,
+    "thermal": 2,
+    "calc": 1,
+    "kazsod": 1,
+    "svmr": 1,
+    "mopb": 1,
+    "prices": 1
+   },
+   "defects_by_object": {
+    "здания": 11,
+    "линейные": 2
+   },
+   "packages_by_object": {
+    "здания": 5,
+    "линейные": 1
+   }
+  },
+  "heldout": {
+   "packages": 33,
+   "clusters": 30,
+   "defects": 38,
+   "files": 1003,
+   "pdf_pages": 30363,
+   "defects_by_group": {
+    "смета": 21,
+    "расчёты": 5,
+    "энергопаспорт": 5,
+    "ПОС": 4,
+    "прочие": 2,
+    "ИГИ": 1
+   },
+   "defects_by_kind": {
+    "kazsod": 10,
+    "svmr": 10,
+    "energy": 5,
+    "calc": 4,
+    "pos": 4,
+    "pz_smeta": 1,
+    "thermal": 1,
+    "tu": 1,
+    "water": 1,
+    "igi": 1
+   },
+   "defects_by_object": {
+    "линейные": 17,
+    "здания": 17,
+    "благоустройство": 4
+   },
+   "packages_by_object": {
+    "линейные": 15,
+    "здания": 15,
+    "благоустройство": 3
+   }
+  }
+ },
+ "knowledge_exclude": {
+  "conclusions_sha12": [
+   "0c5a6803e36d",
+   "0cb17163ffd6",
+   "1dbe7098838c",
+   "26bfa4a47242",
+   "2ac6bab93dba",
+   "335e28f3d50d",
+   "338861f2444b",
+   "44375a45a098",
+   "55ecd3fe3aa0",
+   "5e372844f614",
+   "600432358b56",
+   "6256697833fb",
+   "6bb1be8bdea7",
+   "709ed361a9b5",
+   "70bb1e7fba6c",
+   "838fc7b83de3",
+   "83caf2af278c",
+   "887b88ff48b4",
+   "88d611c4c34d",
+   "8f592ee237c3",
+   "979d11a81993",
+   "9b1bc54933c9",
+   "a258cb4d233c",
+   "a8fc227d196b",
+   "ac74e8c3a4cf",
+   "b489e72e5409",
+   "ba418dbe0017",
+   "bbf8fdc783b7",
+   "bd29377de1f1",
+   "c00940711371",
+   "c7455c6f3c82",
+   "cc53fae1c077",
+   "ddab36245dbe",
+   "de57fcc6960a",
+   "e88f5927ae22",
+   "f349acbe70f3",
+   "f7b7f327829b",
+   "f978a215270a",
+   "fbd9b5c7fba3"
+  ],
+  "conclusion_numbers": [
+   "APE-0152/22",
+   "ARE-0024/25",
+   "ARE-0160/25",
+   "DE-0018/26",
+   "DRMIN-0128/23",
+   "EPVL-0200/25",
+   "ERTEXP-0133/26",
+   "ESKZ-0088/26",
+   "EXAS-0003/25",
+   "FASTEX-0076/25",
+   "KazE-0156/24",
+   "KazE-0420/24",
+   "PEKZ-0004/25",
+   "PEKZ-0498/24",
+   "PEkz-0126/25",
+   "PEkz-0356/24",
+   "SE-0065/26",
+   "SE-0123/25",
+   "SMART-0177/24",
+   "TG-0154/23",
+   "TGKZ-0017/22",
+   "TPC-0003/23",
+   "ZHAUN-0071/24",
+   "АРЭ-0001/25",
+   "КСА-0049/24",
+   "КазЭП-0009/25",
+   "ОСАР-0008/24",
+   "ПСДЭ-0056/25",
+   "СAPC-0210/23",
+   "СAPC-0216/23",
+   "СAPC-0224/23",
+   "ЭЦЛИС-0069/21",
+   "ЮЖГЭКС-0026/25",
+   "ЮЖГЭКС-0028/24",
+   "ЮКПЭ-0071/23",
+   "ЮКПЭ-0073/23"
+  ],
+  "items": 1104
+ }
+}
