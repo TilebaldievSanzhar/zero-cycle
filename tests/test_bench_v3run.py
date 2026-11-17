@@ -210,6 +210,33 @@ def test_defect_found_by_its_name(package, n, text):
     assert s["defects"][f"{package}.{n}"]["found"], s
 
 
+def test_pipe_stress_analysis_is_not_the_concrete_calculation():
+    # проверка обвязки 18.11: убран ТС.КЖ.Р (железобетонные узлы и опоры), а находка — о расчёте труб в «Старт-Проф»
+    text = "Не найден заявленный расчёт прочности и жёсткости трубопроводов в «Старт-проф»: отсутствуют расчётная схема"
+    assert not score_answer("kz-03", {"findings": [f(text)]})["defects"]["kz-03.1"]["found"]
+    concrete = "Отсутствуют расчёты железобетонных конструкций узлов трубопроводов УТ1–УТ5 и неподвижных опор"
+    assert score_answer("kz-03", {"findings": [f(concrete)]})["defects"]["kz-03.1"]["found"]
+
+
+def test_review_verdict_overrides_match(tmp_path, monkeypatch):
+    import json
+
+    from zerocycle.bench import v3score
+
+    plan_dir = tmp_path / "check"
+    (plan_dir / "kz-06.A0.1").mkdir(parents=True)
+    answer = {"findings": [f("Отсутствует технический отчёт по инженерно-геологическим изысканиям")], "summary": ""}
+    (plan_dir / "kz-06.A0.1" / "answer.json").write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
+    run = {"id": "kz-06.A0.1", "package": "kz-06", "arm": "A0", "k": 1, "status": "ok"}
+    (plan_dir / "runs.jsonl").write_text(json.dumps(run) + "\n", encoding="utf-8")
+    monkeypatch.setattr(v3score, "RESULTS", tmp_path)
+    monkeypatch.setattr(v3score, "load_runs", lambda name: [run])
+    assert v3score.score_plan("check")["summary"]["A0"]["per_defect"]["kz-06.1"] == 1.0
+    verdict = {"kz-06.A0.1|kz-06.1": {"found": False, "why": "проверка"}}
+    (plan_dir / "verdicts.json").write_text(json.dumps(verdict, ensure_ascii=False), encoding="utf-8")
+    assert v3score.score_plan("check")["summary"]["A0"]["per_defect"]["kz-06.1"] == 0.0
+
+
 def test_calculation_seeds_do_not_match_each_other():
     s = score_answer("kz-10", {"findings": [f("Отсутствует гидравлический расчёт системы отопления")]})
     assert s["defects"]["kz-10.2"]["found"] and not s["defects"]["kz-10.1"]["found"]

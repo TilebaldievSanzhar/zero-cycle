@@ -94,14 +94,30 @@ def score_answer(package: str, answer: dict | None) -> dict:
     return out
 
 
+def verdicts(plan_name: str) -> dict[str, dict]:
+    """Решения просмотра глазами: «прогон|дефект» → {"found": bool, "why": "…"}; файл verdicts.json рядом с итогами.
+
+    Просмотр идёт по review.md без имени руки; решение пишется сюда, а не правкой ответа.
+    """
+    path = RESULTS / plan_name / "verdicts.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
 def score_plan(plan_name: str) -> dict:
     """Все прогоны плана: по прогону — дефекты; по руке — полнота (доля прогонов, нашедших дефект, в среднем)."""
     runs = load_runs(plan_name)
+    decided = verdicts(plan_name)
     per_run = {}
     for r in runs:
         path = RESULTS / plan_name / r["id"] / "answer.json"
         answer = json.loads(path.read_text(encoding="utf-8")) if r["status"] == "ok" and path.exists() else None
-        per_run[r["id"]] = {"run": r, "answer": answer, "score": score_answer(r["package"], answer)}
+        score = score_answer(r["package"], answer)
+        for d, v in score["defects"].items():
+            if (key := f"{r['id']}|{d}") in decided:
+                v.update(found=bool(decided[key]["found"]), why=f"просмотр: {decided[key].get('why', '')}")
+                if not v["found"]:
+                    v.update(status=None, finding=None)
+        per_run[r["id"]] = {"run": r, "answer": answer, "score": score}
     found: dict[tuple[str, str], list[bool]] = defaultdict(list)  # (рука, дефект) → по прогонам
     found_violated: dict[tuple[str, str], list[bool]] = defaultdict(list)
     for x in per_run.values():
@@ -158,7 +174,7 @@ def review(scored: dict, seed: int = 2026) -> str:
     for x in scored["runs"].values():
         findings = (x["answer"] or {}).get("findings", [])
         for d, v in x["score"]["defects"].items():
-            if v["found"]:
+            if v["found"] and v["finding"] is not None:
                 rows.append(("совпадение " + v["why"], [d], findings[v["finding"]]))
         for near in x["score"]["near"]:
             rows.append(("почти", near["defects"], findings[near["finding"]]))
