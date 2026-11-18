@@ -39,6 +39,9 @@ CORPUS = REPO / "var" / "v3" / "kz"
 RESULTS = REPO / "var" / "v3" / "runs"
 WORK = Path(r"C:\zc-v3\work")  # папки рук: вне репозитория и корпуса, короткий путь — длинные имена архивов
 START = Path(r"C:\zc-v3\start.cmd")
+ENGINE = Path(r"C:\zc-v3\engine")  # замороженная копия движка для B′ — без bench/
+PYLIB = Path(r"C:\zc-v3\pylib")  # зависимости MCP-сервера (mcp, pydantic…) для системного Python 3.14
+V1_PYLIB = Path(r"C:\zc-bench\pylib")
 STARTUP = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
 LINK = STARTUP / "zc-v3.lnk"
 
@@ -182,11 +185,13 @@ def deny_paths() -> list[Path]:
     return out
 
 
-def permissions() -> str:
+def permissions(engine: bool = False) -> str:
     """Профиль прав руки одним значением -c: ключ в -c Codex делит по точкам без учёта кавычек, и путь с точкой
     («.codex») так не задать; внутри TOML-таблицы кавычки работают. Elevated-песочница требует чтения корня, запреты
-    поверх — deny_paths; писать — только в рабочей папке; сети нет."""
-    fs = {":root": "read", ":workspace_roots": "write", **{str(p): "deny" for p in deny_paths()}}
+    поверх — deny_paths; писать — только в рабочей папке; сети нет. Копию движка читает только B′ (engine): её
+    MCP-сервер может идти внутри той же песочницы."""
+    deny = deny_paths() + ([] if engine else [ENGINE])
+    fs = {":root": "read", ":workspace_roots": "write", **{str(p): "deny" for p in deny}}
     table = ", ".join(f"{json.dumps(k)}={json.dumps(v)}" for k, v in fs.items())
     return "permissions={arm={filesystem={" + table + "}, network={enabled=false}}}"
 
@@ -224,7 +229,7 @@ def codex_cmd(
         f'model_reasoning_effort="{effort}"',
         'windows.sandbox="elevated"',  # без elevated Windows-песочница не умеет запрет чтения
         'default_permissions="arm"',
-        permissions(),
+        permissions(engine=mcp is not None),
         "skills.bundled.enabled=false",
         'web_search="disabled"',  # поиск идёт на сервере, мимо песочницы: нашёл бы заключение по названию объекта
     ]
@@ -520,8 +525,36 @@ def _pages(package: str) -> int | None:
 
 
 def engine_mcp(run_dir: Path) -> dict:
-    """MCP-сервер движка для B′. Движок v2 ещё не готов (PROTOCOL_V3, «Порядок работ», п. 4)."""
-    raise RuntimeError("рука B′ ждёт движка v2: путь к замороженной копии и её окружение задаются при заморозке")
+    """MCP-сервер движка v2 для B′: замороженная копия (freeze_engine) на системном Python и зависимостях из PYLIB,
+    корень — папка руки, юрисдикция — kz."""
+    if not (ENGINE / "src" / "zerocycle").is_dir():
+        raise RuntimeError("нет замороженной копии движка: python -m zerocycle.bench.v3run engine --freeze")
+    path = [ENGINE / "src", PYLIB, PYLIB / "win32", PYLIB / "win32" / "lib"]
+    return {
+        "command": arm_python(),
+        "args": ["-X", "utf8", "-m", "zerocycle", "mcp", "--root", str(run_dir), "-j", "kz"],
+        "env": {"PYTHONPATH": os.pathsep.join(str(p) for p in path), "PYTHONUTF8": "1"},
+    }
+
+
+def freeze_engine() -> dict:
+    """Копия движка для B′: src/zerocycle без bench/ (там засев и драйвер) и без кэшей; зависимости MCP-сервера —
+    из pylib бенчмарка v1 (Python 3.14). sha256 файлов копии — ENGINE/engine.sha256, коммит — ENGINE/commit.txt."""
+    shutil.rmtree(ENGINE, ignore_errors=True)
+    shutil.copytree(
+        REPO / "src" / "zerocycle",
+        ENGINE / "src" / "zerocycle",
+        ignore=shutil.ignore_patterns("bench", "__pycache__", "*.pyc"),
+    )
+    if not PYLIB.exists():
+        shutil.copytree(V1_PYLIB, PYLIB, ignore=shutil.ignore_patterns("__pycache__"))
+    manifest = skill_manifest(ENGINE / "src")
+    (ENGINE / "engine.sha256").write_text("".join(f"{h}  {p}\n" for h, p in manifest), encoding="utf-8")
+    head = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
+    dirty = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain", "src"], capture_output=True, text=True)
+    commit = head.strip() + (" (src с незакоммиченными правками)" if dirty.stdout.strip() else "")
+    (ENGINE / "commit.txt").write_text(commit + "\n", encoding="utf-8")
+    return {"files": len(manifest), "commit": commit, "engine": str(ENGINE)}
 
 
 # --- лимит и ожидание ---------------------------------------------------------------------------------------------
@@ -716,12 +749,19 @@ def probe(kind: str, keep: bool = False, skills: Path | None = None) -> dict:
             (run_dir / ".agents" / "skills" / "zc-probe").mkdir(parents=True)
             (run_dir / ".agents" / "skills" / "zc-probe" / "SKILL.md").write_text(PROBE_SKILL, encoding="utf-8")
         prompt = "Это проверка среды. Перечисли имена скилов и инструментов, которые тебе доступны. Ничего не выполняй."
+    elif kind == "mcp":
+        prompt = (
+            "Это проверка среды, а не задача. Вызови инструмент list_rules сервера zc и напиши, сколько правил он "
+            "вернул и какие из них — пакета kz. Затем вызови expertise(object_class='building', work_kind='new') и "
+            "назови три первых документа с их долей. Больше ничего не делай."
+        )
     else:
         raise ValueError(kind)
     answer = out / "answer.txt"
     answer.unlink(missing_ok=True)
+    mcp = engine_mcp(run_dir) if kind == "mcp" else None
     try:
-        r = execute(codex_cmd(run_dir, answer, None), prompt, run_dir, out, 10, say=print)
+        r = execute(codex_cmd(run_dir, answer, None, mcp=mcp), prompt, run_dir, out, 10, say=print)
         r["probe_file"] = (run_dir / "probe.txt").exists()
     finally:
         if not keep:
@@ -935,7 +975,9 @@ def main() -> int:
     s = sub.add_parser("status")
     s.add_argument("--plan", default="check", choices=["check", "pilot", "main"])
     p = sub.add_parser("probe")
-    p.add_argument("kind", choices=["sandbox", "skills"])
+    p.add_argument("kind", choices=["sandbox", "skills", "mcp"])
+    e = sub.add_parser("engine", help="замороженная копия движка для B′ (без bench/)")
+    e.add_argument("--freeze", action="store_true", required=True)
     p.add_argument("--keep", action="store_true")
     p.add_argument("--skills", type=Path, help="проверить настоящие скилы вместо проверочного")
     au = sub.add_parser("author", help="сессия-автор скилов A1 на Codex (PROTOCOL_V3, «Руки»)")
@@ -953,6 +995,8 @@ def main() -> int:
         print(status(args.plan))
     elif args.cmd == "probe":
         print(json.dumps(probe(args.kind, args.keep, args.skills), ensure_ascii=False, indent=1))
+    elif args.cmd == "engine":
+        print(json.dumps(freeze_engine(), ensure_ascii=False, indent=1))
     elif args.cmd == "author":
         if not take_lock():
             log(f"драйвер уже идёт (замок {lock_path()})")

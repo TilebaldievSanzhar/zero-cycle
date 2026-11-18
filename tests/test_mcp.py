@@ -92,6 +92,7 @@ def test_protocol_tools_over_memory_transport(seeded):
                 "render_fragment",
                 "list_rules",
                 "norm_status",
+                "expertise",
             }
             res = await client.call_tool("check_package", {"path": ".", "wait_seconds": 120})
             summary = res.structuredContent
@@ -125,3 +126,17 @@ def test_stdio_server_starts_and_answers():
                 assert {"kz.completeness.ird", "kz.norms.agsk1", "spds.sheets.count"} <= ids
 
     anyio.run(main)
+
+
+def test_expertise_ranks_documents_for_object_kind():
+    from zerocycle.mcp.tools import Session
+
+    s = Session(jurisdiction="kz")
+    out = s.expertise("building", "capital_repair")
+    assert out["documents"] and out["documents"][0]["share"] >= out["documents"][-1]["share"]
+    ids = {d["id"] for d in out["documents"]}
+    assert "thermal-calc" in ids  # теплотехнику эксперты требуют у зданий
+    linear = {d["id"] for d in s.expertise("linear", "reconstruction")["documents"]}
+    assert "energy-passport" not in linear  # энергопаспорт — только у зданий
+    checks = {d["id"]: d["engine_checks"] for d in out["documents"]}
+    assert checks.get("local-content") == "kz.completeness.ird"

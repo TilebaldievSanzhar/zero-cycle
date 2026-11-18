@@ -89,6 +89,20 @@ def test_codex_cmd_with_mcp(monkeypatch):
     assert "--output-schema" not in cmd
 
 
+def test_engine_copy_is_visible_only_to_b_prime(monkeypatch, tmp_path):
+    engine = str(v3run.ENGINE).replace("\\", "\\\\")
+    assert f'"{engine}"="deny"' in v3run.permissions()  # A0 и A1 копию движка не читают
+    assert f'"{engine}"="deny"' not in v3run.permissions(engine=True)
+    monkeypatch.setattr(v3run, "ENGINE", tmp_path / "engine")
+    with pytest.raises(RuntimeError):
+        v3run.engine_mcp(tmp_path / "run")  # без замороженной копии B′ не запускается
+    (tmp_path / "engine" / "src" / "zerocycle").mkdir(parents=True)
+    monkeypatch.setattr(v3run, "arm_python", lambda: r"C:\Py\python.exe")
+    cfg = v3run.engine_mcp(tmp_path / "run")
+    assert cfg["args"][-2:] == ["-j", "kz"] and str(tmp_path / "run") in cfg["args"]
+    assert str(tmp_path / "engine" / "src") in cfg["env"]["PYTHONPATH"]
+
+
 def test_deny_paths_cover_repo_and_agents():
     deny = deny_paths()
     for name in ("var", "src", "docs", ".git"):

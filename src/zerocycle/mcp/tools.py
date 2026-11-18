@@ -15,6 +15,7 @@ import json
 import tempfile
 import threading
 import time
+from collections import Counter
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -32,6 +33,21 @@ SUMMARY_VIOLATED = 25  # нарушений в сводке check_package; ос�
 RENDER_SCALE = 2.0  # 144 dpi: читаются графы основной надписи
 RENDER_MAX_PX = 2000  # длинная сторона картинки
 RENDER_MARGIN = 36.0  # поле вокруг рамки находки, пт (0,5 дюйма)
+# Чего движок не проверяет — агенту в сводке прогона (отчёт о покрытии, PROTOCOL_V3 и REVIEW_2026-11, § 9, п. 3)
+NOT_CHECKED = {
+    "kz": [
+        "правильность расчётов и их соответствие нормам — движок ищет только, есть ли расчёт в пакете",
+        "проектные решения и содержание чертежей",
+        "сметные цены, объёмы работ и итоги смет",
+        "документы Excel и Word — только по именам файлов, без содержания",
+        "документы, которые экспертиза требует редко, — их частоты отдаёт инструмент expertise",
+    ],
+    "ru": [
+        "правильность расчётов и проектные решения",
+        "сметные цены, объёмы работ и итоги смет",
+        "документы Excel и Word — только по именам файлов, без содержания",
+    ],
+}
 VERDICT = {
     "current": "действует",
     "outdated_edition": "действует более новая редакция",
@@ -86,9 +102,10 @@ def _anchor_view(a: Anchor) -> dict[str, Any]:
 
 
 class Session:
-    def __init__(self, root: Path | None = None, runs_dir: Path | None = None) -> None:
+    def __init__(self, root: Path | None = None, runs_dir: Path | None = None, jurisdiction: str = "ru") -> None:
         self.root = Path(root).resolve() if root else None
         self.runs_dir = Path(runs_dir) if runs_dir else None
+        self.jurisdiction = jurisdiction  # по умолчанию, если агент её не назвал
         self.runs: dict[str, RunRecord] = {}
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="zerocycle-check")
         self._tmp: list[tempfile.TemporaryDirectory] = []  # распакованные zip — пока жива сессия
@@ -108,7 +125,8 @@ class Session:
             raise FileNotFoundError(f"нет такого пакета: {p}")
         return p
 
-    def start(self, path: str, jurisdiction: str = "ru", work_kind: str | None = None) -> str:
+    def start(self, path: str, jurisdiction: str | None = None, work_kind: str | None = None) -> str:
+        jurisdiction = jurisdiction or self.jurisdiction
         if jurisdiction not in available():
             raise ValueError(f"нет пакета юрисдикции «{jurisdiction}»; есть: {', '.join(available())}")
         if work_kind not in (None, "new", "reconstruction", "capital_repair"):
@@ -208,11 +226,23 @@ class Session:
             "counts": counts,
             "violated_by_category": by_family,
             "violated": [finding_view(i, f) for i, f in found if f.status == Status.violated][:SUMMARY_VIOLATED],
+            "manual_by_rule": dict(Counter(f.rule for _, f in found if f.status == Status.manual).most_common()),
             "not_checked": [
                 {"id": i, "rule": f.rule, "description": f.message} for i, f in found if f.status == Status.cannot_check
             ],
             "rules_not_applicable": [{"rule": c.rule, "reason": c.reason} for c in report.coverage if not c.applicable],
             "rule_errors": [{"rule": c.rule, "error": c.error} for c in report.coverage if c.error],
+            "coverage": {
+                "checked": [
+                    {"rule": c.rule, "title": c.title, "counts": c.counts} for c in report.coverage if c.applicable
+                ],
+                "not_checked": NOT_CHECKED.get(report.jurisdiction, [])
+                + (
+                    [f"листы без текстового слоя (сканы): {no_text} — движок их не читает"]
+                    if (no_text := sum(not p.has_text for p in pages))
+                    else []
+                ),
+            },
             "withheld_by_gate": len(report.withheld),
             "next": (
                 f"list_findings(run_id='{rec.id}', status='manual') — что проверить человеку; "
@@ -341,6 +371,77 @@ class Session:
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue(), {"file": file, "page": page, "bbox": bbox, "size": list(img.size)}
+
+    # --- знание экспертизы ---------------------------------------------------------------------------------------
+
+    def expertise(
+        self, object_class: str | None = None, work_kind: str | None = None, run_id: str | None = None
+    ) -> dict[str, Any]:
+        """Какие документы эксперты РК чаще всего заставляли добавить — для вида объекта и вида работ: заданных или
+        определённых по пакету последнего прогона."""
+        from zerocycle.packs.kz.expertise import CLASSES, WORKS, doc_types, knowledge
+        from zerocycle.packs.kz.rules import (
+            IRD_ID,
+            PRACTICE_MIN,
+            PRACTICE_SHARE,
+            group_name,
+            ird_items,
+            package_object,
+            practice_stats,
+        )
+        from zerocycle.rules.context import Context
+
+        if object_class not in (None, *CLASSES) or work_kind not in (None, *WORKS):
+            raise ValueError(f"вид объекта: {', '.join(CLASSES)}; вид работ: {', '.join(WORKS)}")
+        if (object_class is None or work_kind is None) and self.runs:
+            rec = self._run(run_id)
+            if rec.state == "done" and rec.jurisdiction == "kz":
+                params = {"work_kind": rec.work_kind} if rec.work_kind else {}
+                ctx = Context(rec.package, jurisdiction="kz", files=rec.files, params=params)
+                object_class = object_class or package_object(ctx)
+                work_kind = work_kind or ctx.work_kind
+        k = knowledge()
+        ird = {i.id: i for i in ird_items()}
+        rows = []
+        for dt in doc_types():
+            if not dt.applies(object_class, work_kind) and (object_class and work_kind):
+                continue
+            c, n, key = practice_stats(k, dt.id, object_class, work_kind)
+            if not c:
+                continue
+            item = ird.get(IRD_ID.get(dt.id, dt.id)) if dt.ird else None
+            by_rules = item is not None and (work_kind is None or work_kind in item.basis)
+            by_practice = c >= PRACTICE_MIN and c / n >= PRACTICE_SHARE
+            rows.append(
+                {
+                    "id": dt.id,
+                    "title": dt.title,
+                    "group": dt.group,
+                    "conclusions": c,
+                    "of": n,
+                    "share": round(c / n, 3),
+                    "engine_checks": (
+                        "kz.completeness.ird" if by_rules else "kz.completeness.expertise" if by_practice else "нет"
+                    ),
+                }
+            )
+        rows.sort(key=lambda r: -r["share"])
+        key = practice_stats(k, rows[0]["id"], object_class, work_kind)[2] if rows else "all"
+        return {
+            "object_class": object_class,
+            "work_kind": work_kind,
+            "group": group_name(key),
+            "documents": rows,
+            "source": (
+                f"разметка пунктов «Дополнения и изменения» {k.get('conclusions', 0)} заключений РК (собрано "
+                f"{k.get('built', '—')}): в скольких заключениях по объектам этой группы эксперт заставил добавить "
+                "документ"
+            ),
+            "how_to_read": (
+                "Это частота замечаний, а не норма: документ может быть не нужен объекту. Если документа нет в "
+                "пакете — проверь, требуется ли он здесь, и только тогда пиши находку со ссылкой на пакет."
+            ),
+        }
 
     # --- правила и нормы -----------------------------------------------------------------------------------------
 

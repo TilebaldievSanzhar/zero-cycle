@@ -24,11 +24,13 @@ from importlib import resources
 from pydantic import BaseModel, Field
 
 from zerocycle.model import Finding, Run, Severity, Status
+from zerocycle.packs import available, manual_only
 from zerocycle.packs import context as pack_context
 from zerocycle.rules.base import REGISTRY, Outcome, Rule
 from zerocycle.rules.context import Context
 
-ENGINE_VERSION = "0.1.0"
+ENGINE_VERSION = "0.2.0"  # движок v2: знание экспертизы РК, «нарушение» — только у правил с измеренной точностью
+UNMEASURED = " (точность правила на пакетах этой юрисдикции не измерена — проверить)"
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 _SEVERITY_ORDER = {Severity.blocker: 0, Severity.major: 1, Severity.minor: 2, Severity.info: 3}
 _STATUS_ORDER = {Status.violated: 0, Status.manual: 1, Status.cannot_check: 2, Status.ok: 3}
@@ -141,6 +143,7 @@ def gate(rule: Rule, f: Finding, ctx: Context) -> str | None:
 def run(ctx: Context, rules: list[Rule] | None = None) -> Report:
     started = datetime.now(UTC)
     rules = rules if rules is not None else load_rules(ctx.jurisdiction)
+    downgrade = manual_only(ctx.jurisdiction) if ctx.jurisdiction in available() else ()
     findings: list[Finding] = []
     coverage: list[Coverage] = []
     withheld: list[Withheld] = []
@@ -163,6 +166,8 @@ def run(ctx: Context, rules: list[Rule] | None = None) -> Report:
             if why:
                 withheld.append(Withheld(rule=r.id, message=f.message, reason=why))
                 continue
+            if f.status == Status.violated and downgrade and r.id.startswith(downgrade):
+                f = f.model_copy(update={"status": Status.manual, "message": f.message + UNMEASURED})
             findings.append(f)
             counts[f.status.value] += 1
         cov.counts = dict(counts)

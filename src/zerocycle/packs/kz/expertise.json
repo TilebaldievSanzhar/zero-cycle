@@ -1,0 +1,490 @@
+{
+ "built": "2026-11-18",
+ "source": "разметка пунктов заключений РК (Codex gpt-6.1-sol, high), поле «представлен документ»",
+ "conclusions": 481,
+ "conclusions_unclassified": 56,
+ "excluded_items": 1104,
+ "excluded_conclusions": 39,
+ "added_items": 2571,
+ "added_classified": 1786,
+ "population": {
+  "all": 481,
+  "building": 191,
+  "building/capital_repair": 101,
+  "building/new": 65,
+  "building/reconstruction": 25,
+  "landscape": 10,
+  "landscape/capital_repair": 1,
+  "landscape/new": 2,
+  "landscape/reconstruction": 7,
+  "linear": 224,
+  "linear/capital_repair": 22,
+  "linear/new": 62,
+  "linear/reconstruction": 140
+ },
+ "doc_types": {
+  "local-content": {
+   "all": 131,
+   "building": 66,
+   "building/capital_repair": 25,
+   "building/new": 32,
+   "building/reconstruction": 9,
+   "landscape": 2,
+   "landscape/reconstruction": 2,
+   "linear": 56,
+   "linear/capital_repair": 5,
+   "linear/new": 10,
+   "linear/reconstruction": 41
+  },
+  "resource-sheet": {
+   "all": 144,
+   "building": 68,
+   "building/capital_repair": 25,
+   "building/new": 32,
+   "building/reconstruction": 11,
+   "landscape": 4,
+   "landscape/reconstruction": 4,
+   "linear": 61,
+   "linear/capital_repair": 4,
+   "linear/new": 20,
+   "linear/reconstruction": 37
+  },
+  "estimate-note": {
+   "all": 126,
+   "building": 63,
+   "building/capital_repair": 24,
+   "building/new": 30,
+   "building/reconstruction": 9,
+   "landscape": 3,
+   "landscape/reconstruction": 3,
+   "linear": 51,
+   "linear/capital_repair": 2,
+   "linear/new": 21,
+   "linear/reconstruction": 28
+  },
+  "summary-estimate": {
+   "all": 66,
+   "building": 40,
+   "building/capital_repair": 4,
+   "building/new": 29,
+   "building/reconstruction": 7,
+   "landscape": 2,
+   "landscape/new": 1,
+   "landscape/reconstruction": 1,
+   "linear": 17,
+   "linear/new": 7,
+   "linear/reconstruction": 10
+  },
+  "price-list": {
+   "all": 56,
+   "building": 38,
+   "building/capital_repair": 5,
+   "building/new": 26,
+   "building/reconstruction": 7,
+   "linear": 18,
+   "linear/capital_repair": 1,
+   "linear/new": 4,
+   "linear/reconstruction": 13
+  },
+  "design-cost": {
+   "all": 19,
+   "building": 7,
+   "building/capital_repair": 5,
+   "building/reconstruction": 2,
+   "linear": 9,
+   "linear/new": 3,
+   "linear/reconstruction": 6
+  },
+  "defect-act": {
+   "all": 52,
+   "building": 22,
+   "building/capital_repair": 14,
+   "building/new": 3,
+   "building/reconstruction": 5,
+   "landscape": 1,
+   "landscape/reconstruction": 1,
+   "linear": 26,
+   "linear/capital_repair": 2,
+   "linear/new": 1,
+   "linear/reconstruction": 23
+  },
+  "estimate-docs": {
+   "all": 50,
+   "building": 21,
+   "building/capital_repair": 15,
+   "building/new": 5,
+   "building/reconstruction": 1,
+   "linear": 23,
+   "linear/capital_repair": 1,
+   "linear/new": 9,
+   "linear/reconstruction": 13
+  },
+  "work-volumes": {
+   "all": 22,
+   "building": 5,
+   "building/capital_repair": 3,
+   "building/new": 1,
+   "building/reconstruction": 1,
+   "landscape": 1,
+   "landscape/reconstruction": 1,
+   "linear": 15,
+   "linear/capital_repair": 3,
+   "linear/new": 3,
+   "linear/reconstruction": 9
+  },
+  "duration-calc": {
+   "all": 75,
+   "building": 46,
+   "building/capital_repair": 10,
+   "building/new": 26,
+   "building/reconstruction": 10,
+   "landscape": 1,
+   "landscape/reconstruction": 1,
+   "linear": 23,
+   "linear/capital_repair": 2,
+   "linear/new": 5,
+   "linear/reconstruction": 16
+  },
+  "pos": {
+   "all": 12,
+   "building": 7,
+   "building/capital_repair": 2,
+   "building/new": 3,
+   "building/reconstruction": 2,
+   "linear": 5,
+   "linear/capital_repair": 1,
+   "linear/reconstruction": 4
+  },
+  "temporary-buildings": {
+   "all": 13,
+   "building": 5,
+   "building/capital_repair": 5,
+   "linear": 5,
+   "linear/new": 3,
+   "linear/reconstruction": 2
+  },
+  "construction-plan": {
+   "all": 6,
+   "building": 3,
+   "building/capital_repair": 3,
+   "linear": 3,
+   "linear/new": 1,
+   "linear/reconstruction": 2
+  },
+  "start-letter": {
+   "all": 16,
+   "building": 8,
+   "building/capital_repair": 4,
+   "building/new": 3,
+   "building/reconstruction": 1,
+   "linear": 8,
+   "linear/capital_repair": 2,
+   "linear/new": 4,
+   "linear/reconstruction": 2
+  },
+  "composition-sheet": {
+   "all": 35,
+   "building": 29,
+   "building/capital_repair": 2,
+   "building/new": 23,
+   "building/reconstruction": 4,
+   "linear": 2,
+   "linear/new": 2
+  },
+  "project-passport": {
+   "all": 39,
+   "building": 24,
+   "building/capital_repair": 17,
+   "building/new": 2,
+   "building/reconstruction": 5,
+   "landscape": 2,
+   "landscape/capital_repair": 1,
+   "landscape/reconstruction": 1,
+   "linear": 5,
+   "linear/new": 4,
+   "linear/reconstruction": 1
+  },
+  "situation-plan": {
+   "all": 53,
+   "building": 37,
+   "building/capital_repair": 7,
+   "building/new": 24,
+   "building/reconstruction": 6,
+   "landscape": 1,
+   "landscape/reconstruction": 1,
+   "linear": 10,
+   "linear/new": 1,
+   "linear/reconstruction": 9
+  },
+  "utility-plan": {
+   "all": 45,
+   "building": 41,
+   "building/capital_repair": 7,
+   "building/new": 27,
+   "building/reconstruction": 7,
+   "linear": 3,
+   "linear/capital_repair": 1,
+   "linear/new": 1,
+   "linear/reconstruction": 1
+  },
+  "transport-scheme": {
+   "all": 16,
+   "building": 4,
+   "building/capital_repair": 3,
+   "building/reconstruction": 1,
+   "linear": 12,
+   "linear/capital_repair": 1,
+   "linear/new": 2,
+   "linear/reconstruction": 9
+  },
+  "energy-passport": {
+   "all": 25,
+   "building": 24,
+   "building/capital_repair": 15,
+   "building/new": 7,
+   "building/reconstruction": 2
+  },
+  "thermal-calc": {
+   "all": 50,
+   "building": 44,
+   "building/capital_repair": 29,
+   "building/new": 7,
+   "building/reconstruction": 8,
+   "linear": 3,
+   "linear/new": 1,
+   "linear/reconstruction": 2
+  },
+  "hydraulic-calc": {
+   "all": 56,
+   "building": 36,
+   "building/capital_repair": 21,
+   "building/new": 8,
+   "building/reconstruction": 7,
+   "landscape": 1,
+   "landscape/reconstruction": 1,
+   "linear": 14,
+   "linear/new": 7,
+   "linear/reconstruction": 7
+  },
+  "heat-calc": {
+   "all": 27,
+   "building": 21,
+   "building/capital_repair": 13,
+   "building/new": 3,
+   "building/reconstruction": 5,
+   "linear": 3,
+   "linear/new": 1,
+   "linear/reconstruction": 2
+  },
+  "pipe-stress": {
+   "all": 9,
+   "building": 2,
+   "building/new": 2,
+   "linear": 7,
+   "linear/reconstruction": 7
+  },
+  "water-calc": {
+   "all": 50,
+   "building": 32,
+   "building/capital_repair": 17,
+   "building/new": 7,
+   "building/reconstruction": 8,
+   "landscape": 1,
+   "landscape/capital_repair": 1,
+   "linear": 17,
+   "linear/new": 11,
+   "linear/reconstruction": 6
+  },
+  "electric-calc": {
+   "all": 16,
+   "building": 8,
+   "building/capital_repair": 5,
+   "building/new": 1,
+   "building/reconstruction": 2,
+   "landscape": 1,
+   "landscape/reconstruction": 1,
+   "linear": 4,
+   "linear/new": 1,
+   "linear/reconstruction": 3
+  },
+  "structural-calc": {
+   "all": 33,
+   "building": 18,
+   "building/capital_repair": 8,
+   "building/new": 7,
+   "building/reconstruction": 3,
+   "landscape": 1,
+   "landscape/capital_repair": 1,
+   "linear": 9,
+   "linear/reconstruction": 9
+  },
+  "insolation": {
+   "all": 2,
+   "building": 2,
+   "building/new": 2
+  },
+  "fire-safety": {
+   "all": 5,
+   "building": 5,
+   "building/capital_repair": 2,
+   "building/new": 1,
+   "building/reconstruction": 2
+  },
+  "fire-hydrants": {
+   "all": 26,
+   "building": 26,
+   "building/new": 22,
+   "building/reconstruction": 4
+  },
+  "civil-defence": {
+   "all": 1,
+   "linear": 1,
+   "linear/reconstruction": 1
+  },
+  "antiterror": {
+   "all": 4,
+   "building": 4,
+   "building/new": 3,
+   "building/reconstruction": 1
+  },
+  "environment": {
+   "all": 2,
+   "linear": 2,
+   "linear/reconstruction": 2
+  },
+  "sanitary": {},
+  "surveys-geology": {
+   "all": 29,
+   "building": 14,
+   "building/capital_repair": 5,
+   "building/new": 6,
+   "building/reconstruction": 3,
+   "landscape": 1,
+   "landscape/capital_repair": 1,
+   "linear": 9,
+   "linear/capital_repair": 1,
+   "linear/new": 2,
+   "linear/reconstruction": 6
+  },
+  "surveys-topo": {
+   "all": 28,
+   "building": 12,
+   "building/capital_repair": 4,
+   "building/new": 6,
+   "building/reconstruction": 2,
+   "landscape": 1,
+   "landscape/reconstruction": 1,
+   "linear": 9,
+   "linear/capital_repair": 1,
+   "linear/new": 2,
+   "linear/reconstruction": 6
+  },
+  "tech-conditions": {
+   "all": 34,
+   "building": 14,
+   "building/capital_repair": 5,
+   "building/new": 6,
+   "building/reconstruction": 3,
+   "linear": 16,
+   "linear/capital_repair": 3,
+   "linear/new": 3,
+   "linear/reconstruction": 10
+  },
+  "apz": {
+   "all": 13,
+   "building": 5,
+   "building/capital_repair": 3,
+   "building/new": 2,
+   "landscape": 1,
+   "landscape/reconstruction": 1,
+   "linear": 6,
+   "linear/capital_repair": 1,
+   "linear/new": 4,
+   "linear/reconstruction": 1
+  },
+  "design-assignment": {
+   "all": 27,
+   "building": 16,
+   "building/capital_repair": 8,
+   "building/new": 6,
+   "building/reconstruction": 2,
+   "landscape": 1,
+   "landscape/capital_repair": 1,
+   "linear": 8,
+   "linear/new": 3,
+   "linear/reconstruction": 5
+  },
+  "land-title": {
+   "all": 27,
+   "building": 11,
+   "building/capital_repair": 6,
+   "building/new": 2,
+   "building/reconstruction": 3,
+   "landscape": 1,
+   "landscape/capital_repair": 1,
+   "linear": 13,
+   "linear/new": 6,
+   "linear/reconstruction": 7
+  },
+  "sketch-approval": {
+   "all": 24,
+   "building": 17,
+   "building/capital_repair": 7,
+   "building/new": 4,
+   "building/reconstruction": 6,
+   "landscape": 1,
+   "landscape/capital_repair": 1,
+   "linear": 2,
+   "linear/capital_repair": 1,
+   "linear/new": 1
+  },
+  "survey-report": {
+   "all": 35,
+   "building": 19,
+   "building/capital_repair": 12,
+   "building/new": 2,
+   "building/reconstruction": 5,
+   "landscape": 1,
+   "landscape/reconstruction": 1,
+   "linear": 12,
+   "linear/reconstruction": 12
+  },
+  "demolition": {
+   "all": 20,
+   "building": 10,
+   "building/capital_repair": 7,
+   "building/new": 1,
+   "building/reconstruction": 2,
+   "linear": 10,
+   "linear/capital_repair": 1,
+   "linear/reconstruction": 9
+  },
+  "approvals": {
+   "all": 50,
+   "building": 11,
+   "building/capital_repair": 4,
+   "building/new": 5,
+   "building/reconstruction": 2,
+   "landscape": 2,
+   "landscape/new": 1,
+   "landscape/reconstruction": 1,
+   "linear": 25,
+   "linear/capital_repair": 2,
+   "linear/new": 6,
+   "linear/reconstruction": 17
+  },
+  "license": {
+   "all": 3,
+   "building": 1,
+   "building/capital_repair": 1,
+   "linear": 2,
+   "linear/capital_repair": 1,
+   "linear/reconstruction": 1
+  },
+  "water-reserves": {
+   "all": 2,
+   "linear": 2,
+   "linear/new": 2
+  }
+ }
+}

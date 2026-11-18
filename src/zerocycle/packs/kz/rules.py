@@ -3,6 +3,8 @@
 - `kz.completeness.ird` — исходно-разрешительные и сопроводительные документы по Правилам КВЭ (Приказ № 299,
   прил. 2–4): самая частая категория замечаний РК — 27 из 49 заключений (docs/bench/REMARKS_KZ.md).
 - `kz.norms.agsk1` — ссылки на нормы: заменённые редакции и документы, которых нет в АГСК-1.
+- `kz.completeness.expertise` — движок v2 (docs/bench/PROTOCOL_V3.md): документы, которые эксперты РК часто
+  заставляли добавить для объектов такого вида (знание из заключений — `expertise.py`), но которых нет в Правилах КВЭ.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from zerocycle.model import Anchor, Document, Family, Severity, Status
 from zerocycle.norms.designation import NormDesignation, twins_to_cyrillic
 from zerocycle.norms.index import NormIndex
 from zerocycle.rules.base import Applies, Fixture, Outcome, rule
-from zerocycle.rules.context import Context
+from zerocycle.rules.context import TITLE_LINES, Context
 from zerocycle.rules.fixtures import case, doc, package, page
 
 MAX_ANCHORS = 3
@@ -114,9 +116,11 @@ def _search(ctx: Context, item_names: tuple[re.Pattern[str], ...], heads: tuple[
         for pt in sorted(ctx.pages_of(d).values(), key=lambda p: p.number):
             if pt.number in stamped:
                 continue  # лист с основной надписью — страница проекта, а не документ ИРД: там только упоминания
-            title = _norm(pt.title)
-            if m := next((m for p in heads if (m := p.search(title))), None):
-                hits.append(_Hit(d, pt.number, title[max(0, m.start() - 20) : m.end() + 40], "заголовок страницы"))
+            # заголовок — строка, а не предложение: «Исходя из предоставленного Технического отчёта по
+            # инженерно-геологическим изысканиям…» в альбоме расчётов — упоминание (Тауыш, движок v2)
+            line = _norm(" ".join(_heading_lines(pt.text)))
+            if m := next((m for p in heads if (m := p.search(line))), None):
+                hits.append(_Hit(d, pt.number, line[max(0, m.start() - 20) : m.end() + 40], "заголовок страницы"))
                 break
     return hits
 
@@ -427,4 +431,350 @@ def norms_agsk1(ctx: Context) -> Iterator[Outcome]:
             Status.cannot_check,
             f"Ссылки не проверены — АГСК-1 не перечисляет эти виды документов: {kinds}",
             values={"kinds": dict(uncovered)},
+        )
+
+
+# --- знание экспертизы (движок v2) ------------------------------------------------------------------------------
+
+PRACTICE_BASE = "Практика экспертизы РК"
+# вид документа знания → пункт ird.toml, если имена разные
+IRD_ID = {
+    "defect-act": "defect-acts",
+    "survey-report": "survey-acts",
+    "approvals": "other-approvals",
+    "license": "designer-license",
+}
+PRACTICE_SHARE = 0.08  # проверяем документ, если его требовали хотя бы в каждом двенадцатом заключении такого вида
+PRACTICE_MIN = 3  # и не меньше чем в трёх заключениях
+MIN_POPULATION = 15  # заключений в группе меньше — частота шумная, берём группу шире
+
+
+def practice(ctx: Context) -> dict:
+    """Знание экспертизы: из параметров (фикстуры) или собранное (packs/kz/expertise.json)."""
+    from zerocycle.packs.kz.expertise import knowledge
+
+    return ctx.params.get("expertise_knowledge") or knowledge()
+
+
+def practice_stats(k: dict, doc_id: str, obj: str | None, work: str | None) -> tuple[int, int, str]:
+    """(в скольких заключениях требовали, сколько заключений, группа): вид объекта и работ, если заключений
+    хватает, иначе вид объекта, иначе все."""
+    pop, stats = k.get("population", {}), k.get("doc_types", {}).get(doc_id, {})
+    for key in (f"{obj}/{work}" if obj and work else None, obj, "all"):
+        if key and pop.get(key, 0) >= MIN_POPULATION:
+            return stats.get(key, 0), pop[key], key
+    return 0, 0, "all"
+
+
+def package_object(ctx: Context) -> str | None:
+    """Вид объекта: задан явно или по наименованию объекта в основных надписях, иначе — по первым листам томов."""
+    from zerocycle.packs.kz.expertise import object_class
+
+    if ctx.params.get("object_class"):
+        return str(ctx.params["object_class"])
+    votes: Counter[str] = Counter()
+    for _, _, tb in ctx.title_blocks():
+        if cls := object_class(" ".join((tb.get(2), tb.get(3)))):
+            votes[cls] += 1
+    if not votes:
+        for d in ctx.pdfs()[:30]:
+            first = ctx.pages_of(d).get(1)
+            if first and (cls := object_class(first.head)):
+                votes[cls] += 1
+    return votes.most_common(1)[0][0] if votes else None
+
+
+def group_name(key: str) -> str:
+    from zerocycle.packs.kz.expertise import CLASS_RU, WORK_RU
+
+    if key == "all":
+        return "все объекты"
+    obj, _, work = key.partition("/")
+    return CLASS_RU.get(obj, obj) + (f", {WORK_RU.get(work, work)}" if work else "")
+
+
+# листы-перечни: «Состав проекта», содержание тома, ведомости ссылочных документов — там названия чужих документов
+_LISTING = re.compile(
+    r"состав\w*\s+(?:рабочего\s+)?проект|содержани\w*\s+(?:тома|альбома|книги)|^содержание|ведомост\w*\s+(?:ссылочн|основн\w*\s+комплект)"
+)
+
+
+def _caps(text: str) -> str:
+    return " ".join(text.replace("ё", "е").replace("Ё", "Е").split())
+
+
+# строка-предложение, а не заголовок: «энергетический паспорт разработан отдельным томом», «Исходя из
+# предоставленного Технического отчёта по инженерно-геологическим изысканиям…»
+_SENTENCE = re.compile(
+    r"(?:разработа|выполн[еяи]|предусмотр|представл|предоставл|прин[яи]т|привед[её]н|согласно|см\.|указан|исходя"
+    r"|на\s+основании|по\s+данным|в\s+соответствии)",
+    re.I,
+)
+_NUMBERED = re.compile(r"^\d{1,2}(?:\.\d{1,2})*\.?\s+")  # «5. расчет продолжительности строительства»
+HEADING_MAX = 120  # заголовок короче; длинная строка — абзац текста
+
+
+def _heading_lines(text: str) -> list[str]:
+    """Первые строки листа, похожие на заголовок: короткие и без глаголов описания."""
+    lines = [_norm(s) for s in text.splitlines() if s.strip()][:TITLE_LINES]
+    return [s for s in lines if len(s) <= HEADING_MAX and not _SENTENCE.search(s)]
+
+
+def _inner_headings(text: str) -> list[str]:
+    """Строки-заголовки где угодно на листе, без номера раздела: «5. Расчёт продолжительности строительства»."""
+    lines = (_norm(s) for s in text.splitlines() if s.strip())
+    return [_NUMBERED.sub("", s) for s in lines if len(s) <= HEADING_MAX and not _SENTENCE.search(s)]
+
+
+def _similar(ctx: Context, heads: tuple[re.Pattern[str], ...], listing_ok: bool = False) -> list[_Hit]:
+    """Слабые следы документа — подсказка агенту, а не находка: заголовок раздела посреди листа (расчёт — раздел
+    тома ПОС) или упоминание в тексте («выполнен энергетический паспорт здания»). По одному месту на документ."""
+    hits: list[_Hit] = []
+    for d in ctx.package.documents:
+        if _is_conclusion(ctx, d):
+            continue
+        for pt in sorted(ctx.pages_of(d).values(), key=lambda p: p.number):
+            if not listing_ok and _LISTING.search(_norm(pt.title)):
+                continue
+            inner = next(((ln, m) for ln in _inner_headings(pt.text) for p in heads if (m := p.match(ln))), None)
+            if inner:
+                ln, m = inner
+                hits.append(_Hit(d, pt.number, ln[: m.end() + 40], "заголовок раздела"))
+                break
+            text = _norm(pt.text)
+            if m := next((m for p in heads if (m := p.search(text))), None):
+                hits.append(_Hit(d, pt.number, text[max(0, m.start() - 40) : m.end() + 40], "упоминание"))
+                break
+        if len(hits) >= MAX_ANCHORS:
+            break
+    return hits
+
+
+def _find_doc(
+    ctx: Context,
+    names: tuple[re.Pattern[str], ...],
+    heads: tuple[re.Pattern[str], ...],
+    body: tuple[re.Pattern[str], ...] = (),
+    listing_ok: bool = False,
+) -> list[_Hit]:
+    """Документ по имени файла или папки, по заголовку любой страницы и по графам основной надписи (расчёты и
+    паспорта часто — листы внутри тома, со штампом), затем — по заголовку прописными где угодно на листе.
+    listing_ok — сам документ и есть перечень («Состав проекта»): листы-перечни не пропускаем."""
+    hits: list[_Hit] = []
+    docs = [d for d in ctx.package.documents if not _is_conclusion(ctx, d)]
+    for d in docs:
+        if any(p.search(_norm(d.path)) for p in names):
+            hits.append(_Hit(d, None, d.path.rsplit("/", 1)[-1], "имя файла"))
+    named = {h.doc.path for h in hits}
+    for d in docs:
+        if d.path in named or not heads:
+            continue
+        stamps = {p.number: p.title_block for p in d.pages if p.title_block is not None}
+        texts = ctx.pages_of(d)
+        for number in sorted(set(texts) | set(stamps)):
+            if not listing_ok and number in texts and _LISTING.search(_norm(texts[number].title)):
+                continue  # «Состав проекта», содержание тома: там названия других документов, а не они сами
+            lines = _heading_lines(texts[number].text) if number in texts else []
+            if number in stamps:
+                lines += [_norm(stamps[number].get(g)) for g in (1, 3, 4, 5, 6) if stamps[number].get(g)]
+            found = next(((ln, m) for ln in lines for p in heads if (m := p.search(ln))), None)
+            if found:
+                ln, m = found
+                hits.append(_Hit(d, number, ln[max(0, m.start() - 20) : m.end() + 40], "заголовок или штамп"))
+                break
+    if hits or not body:
+        return hits
+    for d in docs:
+        for pt in sorted(ctx.pages_of(d).values(), key=lambda p: p.number):
+            if not listing_ok and _LISTING.search(_norm(pt.title)):
+                continue
+            text = _caps(pt.text)
+            if m := next((m for p in body if (m := p.search(text))), None):
+                hits.append(_Hit(d, pt.number, text[max(0, m.start() - 20) : m.end() + 40], "заголовок в тексте"))
+                break
+    return hits
+
+
+def _practice_case(names: list[str], obj: str, work: str, texts: dict[tuple[str, int], str] | None = None):
+    k = {
+        "population": {"all": 100, obj: 40, f"{obj}/{work}": 20},
+        "doc_types": {
+            "energy-passport": {"all": 10, obj: 8, f"{obj}/{work}": 6},
+            "thermal-calc": {"all": 9, obj: 7, f"{obj}/{work}": 5},
+            "duration-calc": {"all": 2, obj: 1, f"{obj}/{work}": 1},  # редко — не проверяем
+            "local-content": {"all": 30, obj: 12, f"{obj}/{work}": 8},  # проверяет kz.completeness.ird
+        },
+    }
+
+    def build():
+        docs = [doc(n, 1) for n in names] + [doc("Том 2. АР.pdf", [page(1, {2: "Капитальный ремонт школы"}), page(2)])]
+        return case(package(*docs, work_kind=work), texts, expertise_knowledge=k, object_class=obj)
+
+    return build
+
+
+@rule(
+    "kz.completeness.expertise",
+    version="0.1.0",
+    title="Документы, которые экспертиза РК часто требует для объектов такого вида",
+    family=Family.completeness,
+    kind="presence",
+    severity=Severity.major,
+    basis=(PRACTICE_BASE,),
+    applies=KZ,
+    why=(
+        "Правила КВЭ перечисляют исходно-разрешительные документы, но не расчёты, паспорта и ведомости сметы, "
+        "которые эксперты требуют по виду объекта: в заключениях РК их добавляют по замечаниям чаще всего — "
+        "сводную ведомость ресурсов, пояснительную записку к смете, расчёт продолжительности строительства, "
+        "теплотехнический расчёт и энергопаспорт здания."
+    ),
+    remark="Представить {документ}.",
+    evidence=(
+        "Разметка пунктов заключений РК (docs/bench/LABELING.md): «представлен документ» — 2 571 пункт в 481 "
+        "заключении без отложенной части V3; частоты — src/zerocycle/packs/kz/expertise.json",
+    ),
+    fixtures=(
+        Fixture(
+            "энергопаспорт и теплотехника на месте",
+            _practice_case(["Энергетический паспорт.pdf", "Теплотехнический расчет.pdf"], "building", "capital_repair"),
+            {Status.ok: 2, Status.manual: 0},
+        ),
+        Fixture(
+            "энергопаспорта нет — проверить вручную с частотой из практики",
+            _practice_case(["Теплотехнический расчет.pdf"], "building", "capital_repair"),
+            {Status.manual: 1},
+            items={"energy-passport": Status.manual, "thermal-calc": Status.ok},
+        ),
+        Fixture(
+            "теплотехнический расчёт — лист внутри тома АР",
+            _practice_case(
+                ["Энергетический паспорт.pdf"],
+                "building",
+                "capital_repair",
+                {("Том 2. АР.pdf", 2): "ТЕПЛОТЕХНИЧЕСКИЙ РАСЧЕТ наружной стены\nИсходные данные"},
+            ),
+            {Status.manual: 0},
+            items={"thermal-calc": Status.ok},
+        ),
+        Fixture(
+            "энергопаспорт — заголовок прописными посреди листа тома; в составе проекта — только строка перечня",
+            _practice_case(
+                ["Теплотехнический расчет.pdf"],
+                "building",
+                "capital_repair",
+                {
+                    ("Том 2. АР.pdf", 1): "СОСТАВ ПРОЕКТА\nТом 5. ЭНЕРГЕТИЧЕСКИЙ ПАСПОРТ",
+                    ("Том 2. АР.pdf", 2): "Общие данные\nУтверждаю\nЭНЕРГЕТИЧЕСКИЙ ПАСПОРТ здания школы",
+                },
+            ),
+            {Status.manual: 0},
+            items={"energy-passport": Status.ok},
+        ),
+        Fixture(
+            "только строка «Состав проекта» и упоминание строчными — документа нет",
+            _practice_case(
+                ["Теплотехнический расчет.pdf"],
+                "building",
+                "capital_repair",
+                {
+                    ("Том 2. АР.pdf", 1): "СОСТАВ ПРОЕКТА\nТом 5. ЭНЕРГЕТИЧЕСКИЙ ПАСПОРТ",
+                    ("Том 2. АР.pdf", 2): "Общие данные\nэнергетический паспорт разработан отдельным томом",
+                },
+            ),
+            {Status.manual: 1},
+            items={"energy-passport": Status.manual},
+        ),
+        Fixture(
+            "в записке сказано, что энергопаспорт выполнен, а самого нет — проверить, с подсказкой места",
+            _practice_case(
+                ["Теплотехнический расчет.pdf"],
+                "building",
+                "capital_repair",
+                {("Том 2. АР.pdf", 2): "Общие данные\n" * 12 + "Согласно СН РК выполнен энергетический паспорт здания"},
+            ),
+            {Status.manual: 1},
+            items={"energy-passport": Status.manual},
+        ),
+        Fixture(
+            "сети: энергопаспорт и теплотехника неприменимы",
+            _practice_case([], "linear", "reconstruction"),
+            {Status.manual: 0, Status.ok: 0},
+        ),
+        Fixture(
+            "вид объекта не определён",
+            lambda: case(package(doc("Том 1.pdf"), work_kind="new"), expertise_knowledge={"population": {}}),
+            {Status.cannot_check: 1},
+        ),
+    ),
+)
+def completeness_expertise(ctx: Context) -> Iterator[Outcome]:
+    from zerocycle.packs.kz.expertise import doc_types
+
+    k = practice(ctx)
+    obj, work = package_object(ctx), ctx.work_kind
+    if obj is None:
+        yield Outcome(
+            Status.cannot_check,
+            "Не определён вид объекта — здание, сеть или благоустройство: от него зависит, какие документы "
+            "эксперты требуют чаще",
+        )
+        return
+    scans = [(d, n) for d, n in ctx.textless() if not any(p.number == n and p.title_block for p in d.pages)]
+    scan_docs = sorted({d.path for d, _ in scans})
+    searched = {"files": len(ctx.package.documents), "text_pages": sum(1 for _ in ctx.text_pages())}
+    ird = {i.id: i for i in ird_items()}
+    rows = []
+    for dt in doc_types():
+        if not dt.applies(obj, work):
+            continue
+        item = ird.get(IRD_ID.get(dt.id, dt.id)) if dt.ird else None
+        if item is not None and work in item.basis:
+            continue  # проверяет kz.completeness.ird по Правилам КВЭ; иначе — по практике (ИГИ при капремонте)
+        c, n, key = practice_stats(k, dt.id, obj, work)
+        if n and c >= PRACTICE_MIN and c / n >= PRACTICE_SHARE:
+            rows.append((c / n, dt, c, n, key))
+    for _, dt, c, n, key in sorted(rows, key=lambda r: -r[0]):
+        group = group_name(key)
+        basis = (f"{PRACTICE_BASE}, {c} из {n} заключений: {group}",)
+        values = {"conclusions": c, "population": n, "group": key}
+        listing_ok = dt.id == "composition-sheet"
+        hits = _find_doc(ctx, dt.names, dt.heads, dt.body, listing_ok)
+        if hits:
+            yield Outcome(
+                Status.ok,
+                f"{dt.title}: {_where(hits)}",
+                anchors=_anchors(ctx, hits),
+                values=values | _hit_values(hits, "found"),
+                basis=basis,
+                item=dt.id,
+            )
+            continue
+        tail = (
+            f"; {len(scans)} листов без текстового слоя и без основной надписи — документ может быть среди сканов: "
+            f"{', '.join(scan_docs[:MAX_ANCHORS])}"
+            if scans
+            else ""
+        )
+        practice_note = f"Эксперты РК требовали его в {c} из {n} заключений ({group}){tail}"
+        similar = _similar(ctx, dt.heads, listing_ok)
+        if similar:
+            yield Outcome(
+                Status.manual,
+                f"{dt.title}: отдельным документом не найден; похожие места — {_where(similar)}: проверить, это ли "
+                f"он или только упоминание. {practice_note}",
+                anchors=_anchors(ctx, similar),
+                values=values
+                | _hit_values(similar, "similar")
+                | {"scan_pages": len(scans), "scan_documents": scan_docs},
+                basis=basis,
+                item=dt.id,
+            )
+            continue
+        yield Outcome(
+            Status.manual,
+            f"{dt.title}: в пакете не найден ни по именам файлов, ни по заголовкам страниц и основным надписям. "
+            f"{practice_note}",
+            values=values | {"searched": searched, "scan_pages": len(scans), "scan_documents": scan_docs},
+            basis=basis,
+            item=dt.id,
         )

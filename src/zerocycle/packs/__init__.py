@@ -36,6 +36,13 @@ def _manifest(pack: str) -> dict | None:
     return tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
+@cache
+def manual_only(jurisdiction: str) -> tuple[str, ...]:
+    """Начала id правил, чьё «нарушение» в этой юрисдикции становится «проверить вручную»: точность на её реальных
+    пакетах не измерена или плохая (манифест пакета, ключ manual_only; REVIEW_2026-11, § 5, п. 1)."""
+    return tuple((_manifest(jurisdiction) or {}).get("manual_only", ()))
+
+
 def merge(base: dict, over: dict) -> dict:
     """Наложить слой на родителя: таблицы сливаются по ключам, списки и значения заменяются целиком, `false` убирает
     унаследованный ключ."""
