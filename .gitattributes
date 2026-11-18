@@ -3,3 +3,6 @@
 *.xlsx binary
 *.png binary
 *.pdf binary
+
+# Скилы A1 V3 хранятся байт в байт: их sha256 — в docs/bench/freeze_v3/skills_A1.sha256 (CRLF автора не трогаем)
+docs/bench/skills_A1/** -text
