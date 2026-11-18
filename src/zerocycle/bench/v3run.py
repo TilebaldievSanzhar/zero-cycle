@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import hashlib
 import json
 import os
 import re
@@ -694,13 +695,14 @@ description: Проверочный скил обвязки бенчмарка. 
 """
 
 
-def probe(kind: str, keep: bool = False) -> dict:
-    """Дешёвые проверки: песочница (Python есть, репозиторий закрыт, запись в папке) и скилы в .agents/skills."""
+def probe(kind: str, keep: bool = False, skills: Path | None = None) -> dict:
+    """Дешёвые проверки: песочница (Python есть, репозиторий закрыт, запись в папке) и скилы в .agents/skills —
+    проверочный или настоящие (skills)."""
     out = RESULTS / "probe" / kind
     out.mkdir(parents=True, exist_ok=True)
     sandbox_guard()
     run_dir = WORK / f"probe-{kind}"
-    prepare(run_dir, Path("-"), "A0")
+    prepare(run_dir, Path("-"), "A1" if skills else "A0", skills)
     secret = REPO / "pyproject.toml"
     if kind == "sandbox":
         prompt = (
@@ -710,8 +712,9 @@ def probe(kind: str, keep: bool = False) -> dict:
             "3) создай в текущей папке файл probe.txt со словом ok.\nБольше ничего не делай."
         )
     elif kind == "skills":
-        (run_dir / ".agents" / "skills" / "zc-probe").mkdir(parents=True)
-        (run_dir / ".agents" / "skills" / "zc-probe" / "SKILL.md").write_text(PROBE_SKILL, encoding="utf-8")
+        if not skills:
+            (run_dir / ".agents" / "skills" / "zc-probe").mkdir(parents=True)
+            (run_dir / ".agents" / "skills" / "zc-probe" / "SKILL.md").write_text(PROBE_SKILL, encoding="utf-8")
         prompt = "Это проверка среды. Перечисли имена скилов и инструментов, которые тебе доступны. Ничего не выполняй."
     else:
         raise ValueError(kind)
@@ -726,6 +729,174 @@ def probe(kind: str, keep: bool = False) -> dict:
     r["answer"] = answer.read_text(encoding="utf-8") if answer.exists() else None
     (out / "result.json").write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
     return r
+
+
+# --- скилы A1 -----------------------------------------------------------------------------------------------------
+
+AUTHOR_DIR = Path(r"C:\zc-v3\a1-author")  # вне репозитория, те же запреты песочницы, что у рук
+SKILLS_A1 = REPO / "docs" / "bench" / "skills_A1"  # публикуются с результатами (PROTOCOL_V3)
+SKILLS_SHA = REPO / "docs" / "bench" / "freeze_v3" / "skills_A1.sha256"
+BIM_DATA = REPO.parent / "bim-data"
+# Открытые нормы — те же, на которых стоит пакет правил kz (и бенчмарк на реальных пакетах): движок v2 из открытых
+# источников берёт только их, отличие B′ — знание из замечаний экспертизы. Текста СН РК 1.02-03-2022 в открытом
+# доступе нет (поиск 18.11): нет ни у A1, ни у движка.
+A1_SOURCES = (
+    "norms/kz/GOST_21.101-97_SPDS_osnovnye_trebovaniya_meganorm.txt",
+    "norms/kz/GOST_21.101-97_forms",
+    "norms/kz/AGSK-1_2025-06.pdf",
+    "norms/kz/gosexpertiza_prilozhenie_2_299.docx",
+    "norms/kz/gosexpertiza_prilozhenie_3_299.docx",
+    "norms/kz/gosexpertiza_prilozhenie_4_299.docx",
+    "norms/kz/gosexpertiza_prilozhenie_4-1_299.docx",
+    "norms/kz/gosexpertiza_prilozhenie_5_299.docx",
+)
+AUTHOR_TIMEOUT_MIN = 90
+
+A1_AUTHOR_TASK = """Ты — сильный пользователь Codex. Подготовь скилы Codex, с которыми агент проверит пакет
+проектно-сметной документации Казахстана перед подачей в экспертизу. Агент получит такую задачу:
+
+---
+{task}
+---
+
+Агент работает в Codex на Windows (оболочка PowerShell), без интернета. Его рабочая папка — папка прогона: пакет в
+package/, твои скилы будут лежать в .agents/skills/<имя>/, Codex находит их сам по описанию. Python 3 — команда
+python: pdfplumber, pypdfium2, PyMuPDF (fitz), openpyxl, python-docx, pandas, lxml, Pillow, reportlab.
+
+Источники — только файлы в папке sources/:
+- ГОСТ 21.101-97 «СПДС. Основные требования к рабочей документации» — текст и рисунки форм основных надписей
+  (GOST_21.101-97_forms/);
+- приложения 2, 3, 4, 4-1 и 5 к Правилам проведения комплексной вневедомственной экспертизы (Приказ № 299);
+- АГСК-1, июнь 2025 (PDF): перечень нормативных документов в строительстве РК.
+Других источников нет: ни веба, ни пакетов-примеров. Опирайся на эти тексты; чего в них нет, не выдумывай.
+
+Что сдать — папку skills_out/ в текущей папке:
+- один или несколько скилов: skills_out/<имя>/SKILL.md — в начале YAML с полями name и description (когда скил
+  применять), дальше инструкции;
+- если нужно — вспомогательные скрипты на Python 3 (skills_out/<имя>/scripts/) и справочные файлы, выписанные из
+  источников (skills_out/<имя>/references/). В SKILL.md вызывай их по пути .agents/skills/<имя>/scripts/…;
+- короткий skills_out/README.md: что делают скилы.
+
+Ответ агент сдаёт строго по этой JSON-схеме — Codex проверяет её сам, ответ с другими полями не пройдёт:
+
+{schema}
+
+Скрипты проверь на тестовых файлах, которые сделаешь сам (PDF, Excel, Word); тестовые файлы держи вне skills_out/.
+Работай только в текущей папке: файлы вне неё не открывай и не ищи. Бюджет ограничен — уложись примерно в час
+работы. В конце коротко напиши, что сделал."""
+
+A1_AUTHOR_RESUME = (
+    """Ты продолжаешь прерванную работу: прошлая сессия оборвалась по времени или лимиту. Задача — ниже;
+то, что уже сделано, лежит в skills_out/. Посмотри, что готово, доделай и проверь; бюджет — около получаса.
+
+"""
+    + A1_AUTHOR_TASK
+)
+
+# Поправка 18.11: в задаче первой сессии не было схемы ответа агента — автор придумал свою (evidence, summary-объект,
+# без категории). Та же роль автора получает схему и приводит скилы к ней; остальное не меняет.
+A1_AUTHOR_SCHEMA_FIX = """Ты продолжаешь свою работу над скилами в skills_out/. В первой постановке не была указана
+точная схема ответа агента. Агент сдаёт ответ строго по этой JSON-схеме — Codex проверяет её сам, ответ с другими
+полями не пройдёт:
+
+{schema}
+
+Приведи скилы в соответствие: контракт отчёта, проверку отчёта и инструкции — так, чтобы агент сразу готовил ответ
+ровно в этой схеме (категория из перечня, summary — строка). Полезное из прежнего формата — доказательства,
+ограничения, расхождения — переложи в поля, которые в схеме есть: description, basis, summary. Остальное в скилах не
+меняй. Задача агента прежняя:
+
+---
+{task}
+---
+
+Работай только в текущей папке. Бюджет — около 20 минут. В конце коротко напиши, что изменил."""
+FOLLOWUPS = {"schema": A1_AUTHOR_SCHEMA_FIX}
+
+
+def schema_text() -> str:
+    return json.dumps(ANSWER_SCHEMA, ensure_ascii=False, indent=1)
+
+
+def skill_manifest(root: Path) -> list[tuple[str, str]]:
+    """(sha256, путь) всех файлов скилов, без кэшей Python."""
+    files = sorted(p for p in root.rglob("*") if p.is_file() and "__pycache__" not in p.parts)
+    return [(hashlib.sha256(p.read_bytes()).hexdigest(), p.relative_to(root).as_posix()) for p in files]
+
+
+def check_skill(path: Path) -> str | None:
+    """SKILL.md с YAML-шапкой name и description: None — годен, иначе что не так."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    head = text.split("---")[1] if text.startswith("---") and text.count("---") >= 2 else ""
+    missing = [k for k in ("name:", "description:") if k not in head]
+    return f"{path.parent.name}: нет {', '.join(missing)} в шапке" if missing else None
+
+
+def _author_session(n: int, kind: str, prompt: str, timeout: float, out: Path, say) -> dict:
+    """Одна сессия автора: запуск, запись в sessions.jsonl; оборвал лимит — ждём сброса."""
+    sandbox_guard(say=say)
+    session = out / f"session{n}"
+    session.mkdir(exist_ok=True)
+    answer = session / "answer.txt"
+    answer.unlink(missing_ok=True)
+    say(f"скилы A1: сессия {n} — {kind}")
+    (session / "prompt.txt").write_text(prompt, encoding="utf-8")
+    r = execute(codex_cmd(AUTHOR_DIR, answer, None), prompt, AUTHOR_DIR, session, timeout, say)
+    rec = {k: r[k] for k in ("usage", "minutes", "timed_out", "errors", "outside", "items")}
+    rec.update(session=n, kind=kind, finished=answer.exists(), codex=codex_version(), model=MODEL, effort=EFFORT)
+    with (out / "sessions.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    u = r["usage"] or {}
+    say(
+        f"скилы A1: сессия {n} — {'готово' if rec['finished'] else 'оборвалась'}, {r['minutes']} мин, "
+        f"токенов {u.get('input_tokens', 0):,} вх. (кэш {u.get('cached_input_tokens', 0):,}), "
+        f"{u.get('output_tokens', 0):,} вых."
+    )
+    text = " | ".join(r["errors"]) + " " + r["stderr_tail"]
+    if LIMIT.search(text) and not answer.exists():
+        sleep_until((reset_at(text) or datetime.now() + timedelta(minutes=30)) + timedelta(minutes=2), say)
+    return rec
+
+
+def author(say=log, followup: str | None = None) -> dict:
+    """Сессия-автор скилов A1 на Codex: открытые нормы в sources/, без пакетов, заключений и кода «Нулевого цикла».
+    Оборвал лимит или потолок времени — следующая сессия доделывает начатое. followup — поправка той же роли автора
+    после сдачи (FOLLOWUPS). Готовые скилы — в SKILLS_A1, их sha256 — в SKILLS_SHA."""
+    out = RESULTS / "a1-author"
+    out.mkdir(parents=True, exist_ok=True)
+    sessions = out / "sessions.jsonl"
+    done = [json.loads(x) for x in sessions.read_text(encoding="utf-8").splitlines()] if sessions.exists() else []
+    if not done:
+        shutil.rmtree(AUTHOR_DIR, ignore_errors=True)
+        (AUTHOR_DIR / "sources").mkdir(parents=True)
+        for rel in A1_SOURCES:
+            src, dst = BIM_DATA / rel, AUTHOR_DIR / "sources" / Path(rel).name
+            shutil.copytree(src, dst) if src.is_dir() else shutil.copy2(src, dst)
+    fill = {"task": TASK_V3, "schema": schema_text()}
+    while len(done) < 4 and not any(d["finished"] for d in done):
+        first = not done
+        prompt = (A1_AUTHOR_TASK if first else A1_AUTHOR_RESUME).format(**fill)
+        kind = "старт" if first else "доделывает начатое"
+        done.append(_author_session(len(done) + 1, kind, prompt, AUTHOR_TIMEOUT_MIN if first else 45, out, say))
+    if followup:
+        tries = 0
+        while tries < 3 and not any(d.get("kind") == followup and d["finished"] for d in done):
+            tries += 1
+            prompt = FOLLOWUPS[followup].format(**fill)
+            done.append(_author_session(len(done) + 1, followup, prompt, 45, out, say))
+    skills_out = AUTHOR_DIR / "skills_out"
+    found = sorted(skills_out.rglob("SKILL.md")) if skills_out.exists() else []
+    if not found:
+        raise RuntimeError("сессия-автор не сдала ни одного SKILL.md")
+    problems = [p for p in (check_skill(s) for s in found) if p]
+    shutil.rmtree(SKILLS_A1, ignore_errors=True)
+    shutil.copytree(skills_out, SKILLS_A1, ignore=shutil.ignore_patterns("__pycache__"))
+    manifest = skill_manifest(SKILLS_A1)
+    SKILLS_SHA.parent.mkdir(parents=True, exist_ok=True)
+    SKILLS_SHA.write_text("".join(f"{h}  {p}\n" for h, p in manifest), encoding="utf-8")
+    result = {"skills": [s.parent.name for s in found], "files": len(manifest), "problems": problems}
+    say(f"скилы A1: {result}")
+    return result
 
 
 # --- автозапуск ---------------------------------------------------------------------------------------------------
@@ -759,13 +930,16 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
     r.add_argument("--plan", default="check", choices=["check", "pilot", "main"])
-    r.add_argument("--skills", type=Path, help="скилы A1 (папка со SKILL.md)")
+    r.add_argument("--skills", type=Path, default=SKILLS_A1, help="скилы A1 (папка со SKILL.md)")
     r.add_argument("--keep", action="store_true", help="не удалять папку руки после прогона")
     s = sub.add_parser("status")
     s.add_argument("--plan", default="check", choices=["check", "pilot", "main"])
     p = sub.add_parser("probe")
     p.add_argument("kind", choices=["sandbox", "skills"])
     p.add_argument("--keep", action="store_true")
+    p.add_argument("--skills", type=Path, help="проверить настоящие скилы вместо проверочного")
+    au = sub.add_parser("author", help="сессия-автор скилов A1 на Codex (PROTOCOL_V3, «Руки»)")
+    au.add_argument("--followup", choices=sorted(FOLLOWUPS), help="поправка той же роли автора после сдачи")
     a = sub.add_parser("autostart")
     g = a.add_mutually_exclusive_group(required=True)
     g.add_argument("--install", action="store_true")
@@ -778,7 +952,15 @@ def main() -> int:
     if args.cmd == "status":
         print(status(args.plan))
     elif args.cmd == "probe":
-        print(json.dumps(probe(args.kind, args.keep), ensure_ascii=False, indent=1))
+        print(json.dumps(probe(args.kind, args.keep, args.skills), ensure_ascii=False, indent=1))
+    elif args.cmd == "author":
+        if not take_lock():
+            log(f"драйвер уже идёт (замок {lock_path()})")
+            return 1
+        try:
+            print(json.dumps(author(followup=args.followup), ensure_ascii=False, indent=1))
+        finally:
+            lock_path().unlink(missing_ok=True)
     elif args.install:
         install_autostart(args.plan)
         print(f"автозапуск: {LINK} → {START}")

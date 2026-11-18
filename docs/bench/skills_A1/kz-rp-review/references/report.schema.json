@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": ["findings", "summary"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "status", "document", "page", "description", "basis"],
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["комплектность", "оформление", "увязка", "нормы и ссылки на них", "расчёты", "смета", "формат подачи"]
+          },
+          "status": {"type": "string", "enum": ["нарушение", "проверить вручную"]},
+          "document": {"type": "string", "description": "путь внутри package/: «04 КР/2026-07-КР1.pdf»"},
+          "page": {"type": ["integer", "null"], "description": "страница PDF с 1; null — документ целиком"},
+          "description": {"type": "string"},
+          "basis": {"type": "string", "description": "основание: документ и пункт нормы"}
+        }
+      }
+    },
+    "summary": {
+      "type": "string",
+      "description": "что проверено, что проверить не удалось и почему"
+    }
+  },
+  "additionalProperties": false
+}

@@ -127,6 +127,32 @@ def test_prepare_a1_needs_skills(tmp_path):
     assert (tmp_path / "run" / "package" / "a.pdf").exists()
 
 
+def test_author_task_and_sources():
+    fill = {"task": TASK_V3, "schema": v3run.schema_text()}
+    prompt = v3run.A1_AUTHOR_TASK.format(**fill)
+    assert TASK_V3 in prompt and "skills_out/" in prompt and "sources/" in prompt
+    assert '"findings"' in prompt and '"summary"' in prompt  # автор знает точную схему ответа руки
+    resume = v3run.A1_AUTHOR_RESUME.format(**fill)
+    assert resume.startswith("Ты продолжаешь") and TASK_V3 in resume
+    fix = v3run.FOLLOWUPS["schema"].format(**fill)
+    assert "summary — строка" in fix and '"category"' in fix and TASK_V3 in fix
+    if v3run.BIM_DATA.exists():
+        missing = [rel for rel in v3run.A1_SOURCES if not (v3run.BIM_DATA / rel).exists()]
+        assert not missing
+
+
+def test_check_skill(tmp_path):
+    good = tmp_path / "kz" / "SKILL.md"
+    good.parent.mkdir()
+    good.write_text("---\nname: kz\ndescription: проверка пакета ПСД РК\n---\nИнструкции\n", encoding="utf-8")
+    assert v3run.check_skill(good) is None
+    bad = tmp_path / "x" / "SKILL.md"
+    bad.parent.mkdir()
+    bad.write_text("# без шапки\n", encoding="utf-8")
+    assert "name:" in v3run.check_skill(bad)
+    assert [p for _, p in v3run.skill_manifest(tmp_path)] == ["kz/SKILL.md", "x/SKILL.md"]
+
+
 def f(description: str, category: str = "комплектность", status: str = "нарушение") -> dict:
     return {
         "category": category,

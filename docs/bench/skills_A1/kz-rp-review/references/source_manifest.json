@@ -1,0 +1,62 @@
+[
+  {
+    "source": "sources/AGSK-1_2025-06.pdf",
+    "bytes": 2454473,
+    "sha256": "bac102714f370529faed95e5aa7213a30890db742e0ef2f672dad87fddd4efdd"
+  },
+  {
+    "source": "sources/gosexpertiza_prilozhenie_2_299.docx",
+    "bytes": 17085,
+    "sha256": "7154eabb3f62efdaf860e816a47549db2562071a55039647d0477747d2013035"
+  },
+  {
+    "source": "sources/gosexpertiza_prilozhenie_3_299.docx",
+    "bytes": 15337,
+    "sha256": "9cb648534be400d36a665ef5ef3722373f9325e7d6e31a5f5b8bfebae33e7913"
+  },
+  {
+    "source": "sources/gosexpertiza_prilozhenie_4-1_299.docx",
+    "bytes": 14241,
+    "sha256": "01d79daf3cdae8786b38b97e4132a35ee8a024558d402fea0f1868564c968f22"
+  },
+  {
+    "source": "sources/gosexpertiza_prilozhenie_4_299.docx",
+    "bytes": 14613,
+    "sha256": "5224fa60f80ae9067092ac039b085582fdc2654e5667adb025ed6f28457fe5de"
+  },
+  {
+    "source": "sources/gosexpertiza_prilozhenie_5_299.docx",
+    "bytes": 15531,
+    "sha256": "0af62a124eb564f4cf43d7d20509114c9cab1ddf7e2b318a72de31d461a479c4"
+  },
+  {
+    "source": "sources/GOST_21.101-97_forms/forma_3.jpg",
+    "bytes": 33819,
+    "sha256": "261b3ddd218e8af4dede9c521096c1c8f00f9c9887a318f6e3716521bbfd3f8e"
+  },
+  {
+    "source": "sources/GOST_21.101-97_forms/forma_4.jpg",
+    "bytes": 28637,
+    "sha256": "dd41319de0056ca7b98a242ac63f1e4c788a6be9f985ca43c300bd3ad90dc524"
+  },
+  {
+    "source": "sources/GOST_21.101-97_forms/forma_5.jpg",
+    "bytes": 26141,
+    "sha256": "5f179dece6c7207101b3d552d128c25dd671bb891a483d65e38071c1a1b2dc8d"
+  },
+  {
+    "source": "sources/GOST_21.101-97_forms/forma_6.jpg",
+    "bytes": 18775,
+    "sha256": "ba5c7e1a11c22ed64572348e9959fcc8a243fa55222a4d2fd58c6c8ce09ef70b"
+  },
+  {
+    "source": "sources/GOST_21.101-97_forms/prilozhenie_E_ramka.jpg",
+    "bytes": 28293,
+    "sha256": "054feb953446227ac7b33481ed779b31252430aa8b2443de3e7763c65bb02835"
+  },
+  {
+    "source": "sources/GOST_21.101-97_SPDS_osnovnye_trebovaniya_meganorm.txt",
+    "bytes": 111711,
+    "sha256": "a42e30e3fce1a48f20ee7659badfecb20ad5ad8e516dbd89780352842631a789"
+  }
+]
