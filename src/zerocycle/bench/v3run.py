@@ -620,8 +620,9 @@ def lock_path() -> Path:
 
 
 def _alive(pid: int) -> bool:
-    out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True).stdout
-    return str(pid) in out
+    # байты, не текст: tasklist пишет в кодировке консоли (cp866), а под -X utf8 её разбор падает
+    out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True).stdout
+    return f" {pid} ".encode() in out
 
 
 def take_lock() -> bool:

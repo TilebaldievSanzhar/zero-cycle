@@ -285,3 +285,11 @@ def test_calculation_seeds_do_not_match_each_other():
 def test_failed_run_is_empty_answer():
     s = score_answer("kz-06", None)
     assert len(s["defects"]) == 3 and not any(v["found"] for v in s["defects"].values())
+
+
+def test_lock_owner_alive_under_utf8_mode():
+    """tasklist пишет в кодировке консоли: проверка живости замка не должна падать под -X utf8."""
+    import os
+
+    assert v3run._alive(os.getpid())
+    assert not v3run._alive(4_000_000_000)
