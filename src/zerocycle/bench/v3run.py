@@ -467,6 +467,12 @@ def execute(cmd: list[str], prompt: str, run_dir: Path, out: Path, timeout_min: 
     }
 
 
+def limit_hit(errors: str, answer: Path) -> bool:
+    """Упёрлись в лимит и ответа нет. Codex создаёт файл -o и тогда, когда ход оборвался на лимите, — пустым:
+    20.11 так два прогона ушли в failed вместо ожидания сброса."""
+    return bool(LIMIT.search(errors)) and not (answer.exists() and answer.read_text(encoding="utf-8").strip())
+
+
 def run_one(item: Item, plan_name: str, skills: Path | None, keep: bool, say=print) -> dict:
     out = RESULTS / plan_name / item.id
     out.mkdir(parents=True, exist_ok=True)
@@ -486,7 +492,7 @@ def run_one(item: Item, plan_name: str, skills: Path | None, keep: bool, say=pri
         if not keep:
             shutil.rmtree(run_dir, ignore_errors=True)
     text = " | ".join(r["errors"]) + " " + r["stderr_tail"]
-    if LIMIT.search(text) and not answer_path.exists():
+    if limit_hit(text, answer_path):
         raise LimitHit(text.strip()[:500])
     rec = {
         "id": item.id,
@@ -894,7 +900,7 @@ def _author_session(n: int, kind: str, prompt: str, timeout: float, out: Path, s
         f"{u.get('output_tokens', 0):,} вых."
     )
     text = " | ".join(r["errors"]) + " " + r["stderr_tail"]
-    if LIMIT.search(text) and not answer.exists():
+    if limit_hit(text, answer):
         sleep_until((reset_at(text) or datetime.now() + timedelta(minutes=30)) + timedelta(minutes=2), say)
     return rec
 

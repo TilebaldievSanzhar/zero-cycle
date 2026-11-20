@@ -1,6 +1,6 @@
 """Обвязка V3 на Codex: план, командная строка, песочница, лимит, проверка ответа, засчитывание."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -293,3 +293,21 @@ def test_lock_owner_alive_under_utf8_mode():
 
     assert v3run._alive(os.getpid())
     assert not v3run._alive(4_000_000_000)
+
+
+REAL_LIMIT = (
+    "You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit "
+    "https://chatgpt.com/settings/usage to purchase more credits or try again at 3:28 PM."
+)
+
+
+def test_limit_with_empty_answer_file_waits_for_reset(tmp_path):
+    """20.11: Codex создал пустой answer.json и на лимите — прогон должен ждать сброса, а не уходить в failed."""
+    answer = tmp_path / "answer.json"
+    assert v3run.limit_hit(REAL_LIMIT, answer)
+    answer.write_text("", encoding="utf-8")
+    assert v3run.limit_hit(REAL_LIMIT, answer)
+    answer.write_text('{"findings": []}', encoding="utf-8")
+    assert not v3run.limit_hit(REAL_LIMIT, answer)
+    assert not v3run.limit_hit("stream disconnected", tmp_path / "none.json")
+    assert reset_at(REAL_LIMIT, NOW) == datetime(2026, 11, 18, 15, 28) + timedelta(days=1)
