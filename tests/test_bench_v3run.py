@@ -311,3 +311,14 @@ def test_limit_with_empty_answer_file_waits_for_reset(tmp_path):
     assert not v3run.limit_hit(REAL_LIMIT, answer)
     assert not v3run.limit_hit("stream disconnected", tmp_path / "none.json")
     assert reset_at(REAL_LIMIT, NOW) == datetime(2026, 11, 18, 15, 28) + timedelta(days=1)
+
+
+def test_pinned_codex_copy_wins(tmp_path, monkeypatch):
+    """Общий Codex обновляется сам; прогоны идут на закреплённой копии, если она есть."""
+    exe = tmp_path / "node_modules" / v3run._BIN
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    monkeypatch.setattr(v3run, "CODEX_PIN", tmp_path)
+    path, env = v3run.codex_exe()
+    assert path == str(exe)
+    assert env["CODEX_MANAGED_PACKAGE_ROOT"] == str(tmp_path / "node_modules" / "@openai" / "codex")

@@ -196,11 +196,22 @@ def permissions(engine: bool = False) -> str:
     return "permissions={arm={filesystem={" + table + "}, network={enabled=false}}}"
 
 
+CODEX_PIN = Path(r"C:\zc-v3\codex")  # своя копия CLI: общий Codex обновляется сам (19.11 → 0.170, 25.11 → 0.172)
+CODEX_PIN_VERSION = "0.170.0"
+_BIN = Path("@openai") / "codex-win32-x64" / "vendor" / "x86_64-pc-windows-msvc" / "bin" / "codex.exe"
+
+
 def codex_exe() -> tuple[str, dict[str, str]]:
-    """Сам codex.exe, а не обёртка npm: через .cmd кавычки в ключах -c не доходят целыми."""
+    """Сам codex.exe, а не обёртка npm: через .cmd кавычки в ключах -c не доходят целыми.
+
+    Сначала закреплённая копия бенчмарка (`npm install --prefix C:\\zc-v3\\codex @openai/codex@<версия>` и
+    `"@openai/codex-win32-x64@npm:@openai/codex@<версия>-win32-x64"`), иначе — общий Codex из npm."""
+    pinned = CODEX_PIN / "node_modules"
+    if (pinned / _BIN).exists():
+        root = pinned / "@openai" / "codex"
+        return str(pinned / _BIN), {"CODEX_MANAGED_BY_NPM": "1", "CODEX_MANAGED_PACKAGE_ROOT": str(root)}
     npm = Path(os.environ.get("APPDATA", "")) / "npm" / "node_modules" / "@openai" / "codex"
-    exe = npm / "node_modules" / "@openai" / "codex-win32-x64" / "vendor" / "x86_64-pc-windows-msvc" / "bin"
-    exe = exe / "codex.exe"
+    exe = npm / "node_modules" / _BIN
     if exe.exists():
         return str(exe), {"CODEX_MANAGED_BY_NPM": "1", "CODEX_MANAGED_PACKAGE_ROOT": str(npm)}
     found = shutil.which("codex")
@@ -662,7 +673,10 @@ def drive(plan_name: str, skills: Path | None = None, keep: bool = False) -> int
     try:
         done = {r["id"] for r in load_runs(plan_name)}
         todo = [i for i in items if i.id not in done]
-        log(f"план {plan_name}: {bar(len(done), len(items))}, осталось {len(todo)}; {MODEL}, {EFFORT}")
+        log(
+            f"план {plan_name}: {bar(len(done), len(items))}, осталось {len(todo)}; {MODEL}, {EFFORT}, "
+            f"codex {codex_version()}"
+        )
         for item in todo:
             transient = 0
             while True:
