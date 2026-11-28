@@ -353,3 +353,20 @@ def test_blind_review_rejects_main_and_takes_spare(tmp_path, monkeypatch):
     decisions = {by_kind["запасное"]: {"found": False}}  # отклонить запасное — основная остаётся
     (plan_dir / "review_decisions.json").write_text(json.dumps(decisions), encoding="utf-8")
     assert v3score.score_plan("pilot")["runs"]["kz-06.A0.1"]["score"]["defects"]["kz-06.1"]["finding"] == 0
+
+
+def test_pilot_amendments_28_11():
+    """Поправки после пилота (PILOT_V3): задача — и практика экспертизы, у всех рук одинаково; повтор B′ — Ba × 6."""
+    assert "на практике требует" in TASK_V3 and "почему\n  экспертиза это потребует" in TASK_V3
+    assert prompt_for("A0") == prompt_for("A1") == TASK_V3 and prompt_for("Ba").startswith(TASK_V3)
+    again = plan("pilot-b")
+    assert [i.arm for i in again] == ["Ba"] * 6 and {i.package for i in again} == set(split()["dev"])
+    assert all(i.arm != "Be" for i in plan("main"))
+
+
+def test_practice_hint_says_what_to_do():
+    from zerocycle.mcp.server import INSTRUCTIONS
+    from zerocycle.packs.kz.rules import PRACTICE_ACTION
+
+    assert "проверить вручную" in PRACTICE_ACTION and "практика экспертизы РК" in PRACTICE_ACTION
+    assert "kz.completeness.expertise, которую ты\nне опроверг" in INSTRUCTIONS

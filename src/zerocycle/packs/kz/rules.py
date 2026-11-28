@@ -437,6 +437,10 @@ def norms_agsk1(ctx: Context) -> Iterator[Outcome]:
 # --- знание экспертизы (движок v2) ------------------------------------------------------------------------------
 
 PRACTICE_BASE = "Практика экспертизы РК"
+PRACTICE_ACTION = (
+    "Если его нет и среди сканов — внесите в замечания как «проверить вручную» с основанием «практика экспертизы РК»: "
+    "пункта нормы у такого требования нет, но экспертиза может вернуть пакет без этого документа"
+)
 # вид документа знания → пункт ird.toml, если имена разные
 IRD_ID = {
     "defect-act": "defect-acts",
@@ -615,7 +619,7 @@ def _practice_case(names: list[str], obj: str, work: str, texts: dict[tuple[str,
 
 @rule(
     "kz.completeness.expertise",
-    version="0.1.0",
+    version="0.1.1",  # 28.11: явное действие в подсказке практики (PILOT_V3, поправка 3)
     title="Документы, которые экспертиза РК часто требует для объектов такого вида",
     family=Family.completeness,
     kind="presence",
@@ -755,7 +759,8 @@ def completeness_expertise(ctx: Context) -> Iterator[Outcome]:
             if scans
             else ""
         )
-        practice_note = f"Эксперты РК требовали его в {c} из {n} заключений ({group}){tail}"
+        # пилот V3: без явного действия агент отбрасывал подсказку — у неё нет пункта нормы (PILOT_V3, поправка 3)
+        practice_note = f"Эксперты РК требовали его в {c} из {n} заключений ({group}){tail}. {PRACTICE_ACTION}"
         similar = _similar(ctx, dt.heads, listing_ok)
         if similar:
             yield Outcome(

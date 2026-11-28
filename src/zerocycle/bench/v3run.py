@@ -61,15 +61,16 @@ TASK_V3 = """Ты — нормоконтролёр и ГИП. Перед под�
 Что искать:
 - комплектность: разделы проекта, исходно-разрешительные документы, изыскания, расчёты, сметная документация и другие
   документы, которые требуют нормы РК (Правила проведения комплексной вневедомственной экспертизы — Приказ № 299 и
-  приложения к нему, СН РК 1.02-03-2022);
+  приложения к нему, СН РК 1.02-03-2022) и которые экспертиза РК на практике требует для объектов такого вида;
 - оформление по ГОСТ 21.101-97: основные надписи, нумерация листов, ведомости и содержания томов;
 - увязка между томами: наименование объекта, технико-экономические показатели;
 - ссылки на нормативные документы, которые не действуют или заменены, по АГСК-1.
 
 Как отвечать:
 - в findings — только то, что ты подтвердил по файлам пакета: документ (путь внутри package/), страница PDF с 1
-  (null — документ целиком), что не так и основание — документ и пункт нормы. Если документа в пакете нет — напиши в
-  description, какого документа не хватает, а в document — «package/»;
+  (null — документ целиком), что не так и основание — документ и пункт нормы, а если пункта нормы нет — почему
+  экспертиза это потребует. Если документа в пакете нет — напиши в description, какого документа не хватает, а в
+  document — «package/»;
 - статус «нарушение» — дефект подтверждён; «проверить вручную» — нужен человек;
 - не выдумывай ссылки на нормы и числа; чего проверить не удалось — напиши в summary.
 
@@ -131,6 +132,9 @@ class Item:
         return f"{self.package}.{self.arm}.{self.k}"
 
 
+PLANS = ("check", "pilot", "pilot-b", "main")
+
+
 def plan(name: str) -> list[Item]:
     """Порядок: повтор → пакет → рука — если время кончится, сравнение останется парным (PROTOCOL_V3)."""
     parts = split()
@@ -138,8 +142,10 @@ def plan(name: str) -> list[Item]:
         return [Item("kz-06", "A0", 1), Item("kz-03", "A0", 1)]
     if name == "pilot":
         return [Item(p, a, 1) for p in parts["dev"] for a in ARMS]
+    if name == "pilot-b":  # повтор пилота для B′ после поправок 2 и 3 (PILOT_V3, решение владельца 28.11)
+        return [Item(p, "Ba", 1) for p in parts["dev"]]
     if name == "main":
-        repeats = {"A0": 1, "A1": 2, "Ba": 2}  # порядок B′ выбирается в пилоте — до заморозки поправить здесь
+        repeats = {"A0": 1, "A1": 2, "Ba": 2}  # B′ — «агент сначала»: ничья в пилоте, правило до пилота (PILOT_V3)
         return [Item(p, a, k) for k in (1, 2) for p in parts["heldout"] for a in repeats if k <= repeats[a]]
     raise ValueError(f"нет плана {name}")
 
@@ -990,11 +996,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Прогоны V3 на Codex (PROTOCOL_V3.md)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
-    r.add_argument("--plan", default="check", choices=["check", "pilot", "main"])
+    r.add_argument("--plan", default="check", choices=PLANS)
     r.add_argument("--skills", type=Path, default=SKILLS_A1, help="скилы A1 (папка со SKILL.md)")
     r.add_argument("--keep", action="store_true", help="не удалять папку руки после прогона")
     s = sub.add_parser("status")
-    s.add_argument("--plan", default="check", choices=["check", "pilot", "main"])
+    s.add_argument("--plan", default="check", choices=PLANS)
     p = sub.add_parser("probe")
     p.add_argument("kind", choices=["sandbox", "skills", "mcp"])
     e = sub.add_parser("engine", help="замороженная копия движка для B′ (без bench/)")
@@ -1007,7 +1013,7 @@ def main() -> int:
     g = a.add_mutually_exclusive_group(required=True)
     g.add_argument("--install", action="store_true")
     g.add_argument("--remove", action="store_true")
-    a.add_argument("--plan", default="pilot", choices=["check", "pilot", "main"])
+    a.add_argument("--plan", default="pilot", choices=PLANS)
     args = ap.parse_args()
     RESULTS.mkdir(parents=True, exist_ok=True)
     if args.cmd == "run":

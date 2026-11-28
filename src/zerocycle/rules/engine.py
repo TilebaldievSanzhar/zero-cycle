@@ -29,7 +29,7 @@ from zerocycle.packs import context as pack_context
 from zerocycle.rules.base import REGISTRY, Outcome, Rule
 from zerocycle.rules.context import Context
 
-ENGINE_VERSION = "0.2.0"  # движок v2: знание экспертизы РК, «нарушение» — только у правил с измеренной точностью
+ENGINE_VERSION = "0.2.1"  # движок v2: знание экспертизы РК, «нарушение» — только у правил с измеренной точностью
 UNMEASURED = " (точность правила на пакетах этой юрисдикции не измерена — проверить)"
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 _SEVERITY_ORDER = {Severity.blocker: 0, Severity.major: 1, Severity.minor: 2, Severity.info: 3}
