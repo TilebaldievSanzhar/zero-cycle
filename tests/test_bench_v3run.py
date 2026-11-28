@@ -322,3 +322,34 @@ def test_pinned_codex_copy_wins(tmp_path, monkeypatch):
     path, env = v3run.codex_exe()
     assert path == str(exe)
     assert env["CODEX_MANAGED_PACKAGE_ROOT"] == str(tmp_path / "node_modules" / "@openai" / "codex")
+
+
+def test_blind_review_rejects_main_and_takes_spare(tmp_path, monkeypatch):
+    """Просмотр по номерам без имени руки: отклонённая основная находка уступает запасной того же прогона."""
+    import json
+
+    from zerocycle.bench import v3score
+
+    plan_dir = tmp_path / "pilot"
+    (plan_dir / "kz-06.A0.1").mkdir(parents=True)
+    contradiction = f("Сведения о грунтовых водах противоречат друг другу. Геологический отчёт отсутствует")
+    contradiction["status"], contradiction["category"] = "нарушение", "увязка"
+    proper = f("Отсутствует технический отчёт по инженерно-геологическим изысканиям")
+    answer = {"findings": [contradiction, proper], "summary": ""}
+    (plan_dir / "kz-06.A0.1" / "answer.json").write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
+    run = {"id": "kz-06.A0.1", "package": "kz-06", "arm": "A0", "k": 1, "status": "ok"}
+    monkeypatch.setattr(v3score, "RESULTS", tmp_path)
+    monkeypatch.setattr(v3score, "load_runs", lambda name: [run])
+    raw = v3score.score_plan("pilot", decided={})
+    assert raw["runs"]["kz-06.A0.1"]["score"]["defects"]["kz-06.1"]["finding"] == 0  # «нарушение» — первым
+    text, key = v3score.review(raw)
+    assert "kz-06.A0.1" not in text and "A0" not in text
+    by_kind = {v["kind"]: n for n, v in key.items()}
+    (plan_dir / "review_key.json").write_text(json.dumps(key), encoding="utf-8")
+    decisions = {by_kind["совпадение"]: {"found": False}, by_kind["запасное"]: {"found": True}}
+    (plan_dir / "review_decisions.json").write_text(json.dumps(decisions), encoding="utf-8")
+    d = v3score.score_plan("pilot")["runs"]["kz-06.A0.1"]["score"]["defects"]["kz-06.1"]
+    assert d["found"] and d["finding"] == 1
+    decisions = {by_kind["запасное"]: {"found": False}}  # отклонить запасное — основная остаётся
+    (plan_dir / "review_decisions.json").write_text(json.dumps(decisions), encoding="utf-8")
+    assert v3score.score_plan("pilot")["runs"]["kz-06.A0.1"]["score"]["defects"]["kz-06.1"]["finding"] == 0

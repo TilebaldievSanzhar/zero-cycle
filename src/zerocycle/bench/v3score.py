@@ -66,10 +66,11 @@ def match(pattern: str, f: dict) -> str | None:
 
 
 def score_answer(package: str, answer: dict | None) -> dict:
-    """Дефект → найден ли, какой находкой и почему; плюс почти-совпадения для просмотра."""
+    """Дефект → найден ли, какой находкой и почему; плюс для просмотра: запасные совпадения (ещё находки того же вида
+    с признаком отсутствия — пригодятся, если просмотр отклонит основную) и почти-совпадения."""
     findings = (answer or {}).get("findings", [])
     seeds = PACKAGES[package].seeds
-    out: dict = {"defects": {}, "near": []}
+    out: dict = {"defects": {}, "spare": [], "near": []}
     by_pattern: dict[str, list[int]] = defaultdict(list)  # одинаковый шаблон — дефекты одного вида
     for n, s in enumerate(seeds, 1):
         by_pattern[pattern_of(s)].append(n)
@@ -85,6 +86,7 @@ def score_answer(package: str, answer: dict | None) -> dict:
                 "status": findings[i].get("status") if i is not None else None,
                 "why": why,
             }
+        out["spare"] += [{"defects": [f"{package}.{n}" for n in ns], "finding": i} for i, _ in hits[len(ns) :]]
         used = {i for i, _ in hits}
         out["near"] += [
             {"defects": [f"{package}.{n}" for n in ns], "finding": i}
@@ -94,19 +96,48 @@ def score_answer(package: str, answer: dict | None) -> dict:
     return out
 
 
-def verdicts(plan_name: str) -> dict[str, dict]:
-    """Решения просмотра глазами: «прогон|дефект» → {"found": bool, "why": "…"}; файл verdicts.json рядом с итогами.
-
-    Просмотр идёт по review.md без имени руки; решение пишется сюда, а не правкой ответа.
-    """
-    path = RESULTS / plan_name / "verdicts.json"
+def _load(path) -> dict:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
-def score_plan(plan_name: str) -> dict:
-    """Все прогоны плана: по прогону — дефекты; по руке — полнота (доля прогонов, нашедших дефект, в среднем)."""
+def verdicts(plan_name: str) -> dict[str, dict]:
+    """Решения просмотра глазами: «прогон|дефект» → {"found": bool, "finding": i, "why": "…"}.
+
+    Два источника: verdicts.json (ключ «прогон|дефект») и review_decisions.json — решения по номерам пунктов review.md,
+    который читается без имени руки; номер переводится в прогон и дефект через review_key.json. Решение пишется сюда,
+    а не правкой ответа.
+    """
+    base = RESULTS / plan_name
+    out = _load(base / "verdicts.json")
+    key = _load(base / "review_key.json")
+    decisions = _load(base / "review_decisions.json")
+    main = {f"{k['run']}|{d}" for k in key.values() if k.get("kind") == "совпадение" for d in k["defects"]}
+    rejected = {
+        f"{key[i]['run']}|{d}"
+        for i, v in decisions.items()
+        if not v.get("found") and key[i].get("kind") == "совпадение"
+        for d in key[i]["defects"]
+    }
+    for item, d in sorted(decisions.items(), key=lambda kv: bool(kv[1].get("found"))):  # «засчитать» — последним
+        k = key[item]
+        if k.get("kind") != "совпадение":
+            # запасное и почти-совпадение решают только там, где основной находки нет или её отклонили
+            targets = [d.get("defect") or k["defects"][0]] if d.get("found") else []
+            targets = [t for t in targets if f"{k['run']}|{t}" in rejected or f"{k['run']}|{t}" not in main]
+        else:
+            targets = k["defects"] if not d.get("found") else [d.get("defect") or k["defects"][0]]
+        for defect in targets:
+            out[f"{k['run']}|{defect}"] = {"found": bool(d["found"]), "finding": k["finding"], "why": d.get("why", "")}
+    return out
+
+
+def score_plan(plan_name: str, decided: dict | None = None) -> dict:
+    """Все прогоны плана: по прогону — дефекты; по руке — полнота (доля прогонов, нашедших дефект, в среднем).
+
+    decided — решения просмотра (по умолчанию verdicts(plan)); {} — сырое сопоставление, по нему строятся review.md и
+    выборка слепой оценки, чтобы их номера не менялись от решений."""
     runs = load_runs(plan_name)
-    decided = verdicts(plan_name)
+    decided = verdicts(plan_name) if decided is None else decided
     per_run = {}
     for r in runs:
         path = RESULTS / plan_name / r["id"] / "answer.json"
@@ -114,9 +145,12 @@ def score_plan(plan_name: str) -> dict:
         score = score_answer(r["package"], answer)
         for d, v in score["defects"].items():
             if (key := f"{r['id']}|{d}") in decided:
-                v.update(found=bool(decided[key]["found"]), why=f"просмотр: {decided[key].get('why', '')}")
+                dec = decided[key]
+                v.update(found=bool(dec["found"]), why=f"просмотр: {dec.get('why', '')}")
                 if not v["found"]:
                     v.update(status=None, finding=None)
+                elif dec.get("finding") is not None and answer:
+                    v.update(finding=dec["finding"], status=answer["findings"][dec["finding"]].get("status"))
         per_run[r["id"]] = {"run": r, "answer": answer, "score": score}
     found: dict[tuple[str, str], list[bool]] = defaultdict(list)  # (рука, дефект) → по прогонам
     found_violated: dict[tuple[str, str], list[bool]] = defaultdict(list)
@@ -168,42 +202,105 @@ def report(scored: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def review(scored: dict, seed: int = 2026) -> str:
-    """Совпадения и почти-совпадения вперемешку и без имени руки — для просмотра глазами (PROTOCOL_V3)."""
+def _finding_md(f: dict) -> list[str]:
+    return [
+        f"- {f.get('status')} · {f.get('category')} · `{f.get('document')}` · стр. {f.get('page')}",
+        f"- {f.get('description')}",
+        f"- основание: {f.get('basis')}",
+        "",
+    ]
+
+
+def review(scored: dict, seed: int = 2026) -> tuple[str, dict]:
+    """Совпадения и почти-совпадения вперемешку и без имени руки — для просмотра глазами (PROTOCOL_V3).
+
+    Возвращает текст и ключ «номер → прогон, дефекты, находка»; ключ не открывать до конца просмотра."""
     rows = []
-    for x in scored["runs"].values():
+    for rid, x in scored["runs"].items():
         findings = (x["answer"] or {}).get("findings", [])
         for d, v in x["score"]["defects"].items():
             if v["found"] and v["finding"] is not None:
-                rows.append(("совпадение " + v["why"], [d], findings[v["finding"]]))
+                rows.append(("совпадение " + v["why"], [d], rid, v["finding"], findings[v["finding"]]))
+        for spare in x["score"].get("spare", []):
+            rows.append(("запасное совпадение", spare["defects"], rid, spare["finding"], findings[spare["finding"]]))
         for near in x["score"]["near"]:
-            rows.append(("почти", near["defects"], findings[near["finding"]]))
+            rows.append(("почти", near["defects"], rid, near["finding"], findings[near["finding"]]))
     random.Random(seed).shuffle(rows)
-    out = ["# Просмотр совпадений (руки скрыты)", ""]
-    for n, (what, defects, f) in enumerate(rows, 1):
-        truth = ", ".join(defects)
-        out += [
-            f"## {n}. {what} — {truth}",
-            f"- {f.get('status')} · {f.get('category')} · `{f.get('document')}` · стр. {f.get('page')}",
-            f"- {f.get('description')}",
-            f"- основание: {f.get('basis')}",
-            "",
-        ]
-    return "\n".join(out)
+    out, key = ["# Просмотр совпадений (руки скрыты)", ""], {}
+    for n, (what, defects, rid, i, f) in enumerate(rows, 1):
+        out += [f"## {n}. {what} — {', '.join(defects)}", *_finding_md(f)]
+        key[str(n)] = {"run": rid, "defects": defects, "finding": i, "kind": what.split()[0]}
+    return "\n".join(out), key
+
+
+def blind_sample(scored: dict, per_arm: int = 10, seed: int = 2026) -> tuple[str, dict]:
+    """Слепая оценка находок вне засева (PROTOCOL_V3, «Как засчитываем»): per_arm случайных находок каждой руки,
+    вперемешку и без имени руки. Оценщик видит пакет: вердикт — подтверждено / не подтверждено / проверить нельзя,
+    важность — «снял бы эксперт» или «мелочь». Ключ «номер → прогон, находка» — blind_key.json."""
+    rng = random.Random(seed)
+    pools: dict[str, list[tuple[str, int]]] = defaultdict(list)
+    for rid, x in sorted(scored["runs"].items()):
+        seeded = {v["finding"] for v in x["score"]["defects"].values() if v["finding"] is not None}
+        seeded |= {n["finding"] for n in x["score"]["near"] + x["score"].get("spare", [])}
+        for i, _ in enumerate((x["answer"] or {}).get("findings", [])):
+            if i not in seeded:
+                pools[x["run"]["arm"]].append((rid, i))
+    picked = [p for arm in sorted(pools) for p in rng.sample(pools[arm], min(per_arm, len(pools[arm])))]
+    rng.shuffle(picked)
+    out = ["# Слепая оценка находок (руки скрыты)", "", "Вердикт: подтверждено / не подтверждено / проверить нельзя;"]
+    out += ["важность: снял бы эксперт / мелочь. Решения — blind_verdicts.json по номерам.", ""]
+    key = {}
+    for n, (rid, i) in enumerate(picked, 1):
+        f = scored["runs"][rid]["answer"]["findings"][i]
+        out += [f"## {n}. {scored['runs'][rid]['run']['package']}", *_finding_md(f)]
+        key[str(n)] = {"run": rid, "finding": i}
+    return "\n".join(out), key
+
+
+def precision(plan_name: str) -> dict:
+    """Точность по слепой оценке: подтверждено / (подтверждено + не подтверждено), по рукам."""
+    base = RESULTS / plan_name
+    key, decided = _load(base / "blind_key.json"), _load(base / "blind_verdicts.json")
+    runs = {r["id"]: r for r in load_runs(plan_name)}
+    out: dict[str, dict] = defaultdict(lambda: defaultdict(int))
+    for item, d in decided.items():
+        arm = runs[key[item]["run"]]["arm"]
+        out[arm][d["verdict"]] += 1
+        if d["verdict"] == "подтверждено":
+            out[arm]["снял бы эксперт" if d.get("weight") == "снял бы эксперт" else "мелочь"] += 1
+    res = {}
+    for arm, c in sorted(out.items()):
+        yes, no = c["подтверждено"], c["не подтверждено"]
+        res[arm] = {**c, "precision": round(yes / (yes + no), 3) if yes + no else None}
+    return res
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Засчитывание находок V3")
     ap.add_argument("plan")
+    ap.add_argument("--blind", type=int, default=0, help="слепая оценка: находок на руку (пилот 10, основной 40)")
     a = ap.parse_args()
-    scored = score_plan(a.plan)
     base = RESULTS / a.plan
+
+    def dump(name: str, data) -> None:
+        (base / name).write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    raw = score_plan(a.plan, decided={})  # номера просмотра и выборки — от сырого сопоставления
+    text, key = review(raw)
+    (base / "review.md").write_text(text, encoding="utf-8")
+    dump("review_key.json", key)
+    if a.blind:
+        text, key = blind_sample(raw, a.blind)
+        (base / "blind.md").write_text(text, encoding="utf-8")
+        dump("blind_key.json", key)
+    scored = score_plan(a.plan)
     slim = {"plan": scored["plan"], "summary": scored["summary"]}
     slim["runs"] = {k: v["score"] for k, v in scored["runs"].items()}
-    (base / "score.json").write_text(json.dumps(slim, ensure_ascii=False, indent=1), encoding="utf-8")
+    dump("score.json", slim)
     (base / "report.md").write_text(report(scored), encoding="utf-8")
-    (base / "review.md").write_text(review(scored), encoding="utf-8")
     print(report(scored))
+    if (base / "blind_verdicts.json").exists():
+        print(json.dumps(precision(a.plan), ensure_ascii=False, indent=1))
 
 
 if __name__ == "__main__":
